@@ -17,7 +17,7 @@ services:
       - PYTHONUNBUFFERED=1
     ports:
       - "8000:8000"
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app
+    command: uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/backend/app
     networks:
       - frankie_net
     depends_on:
