@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   backend:
@@ -6,72 +6,69 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: frankie_backend
-    env_file:
-      - ./backend/.env # Loads environment variables from .env file in backend directory
     volumes:
-      # Mount the entire project directory to /frankie_codebase inside the container.
-      # This allows the agent to read/write its own source code.
-      - ./:/frankie_codebase
-      
-      # Mount the config.yml from the host into the container's app directory (read-only).
-      # The application inside the container runs from /app.
+      - ./:/app
       - ./config/config.yml:/app/config/config.yml:ro
-      
-      # Named volume for persistent data like SQLite DB and logs, mapped to /app/data.
-      - frankie_data:/app/data
+      - ./backend/data:/app/backend/data
+      - ./logs:/app/logs
+    env_file:
+      - ./backend/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "8000:8000"
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app
+    networks:
+      - frankie_net
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15
+    container_name: frankie_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: frankie
+      POSTGRES_PASSWORD: frankiepass
+      POSTGRES_DB: frankiedb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - frankie_net
+
+  ollama:
+    image: ollama/ollama
+    container_name: frankie_ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
     networks:
       - frankie_net
     restart: unless-stopped
-    # The CMD is now defined in the backend/Dockerfile for uvicorn with reload.
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: frankie_frontend
-    # For local development with Vite HMR, you'd typically run `npm run dev` which uses port 3000.
-    # The Dockerfile for frontend builds for production and serves on port 80 via Nginx.
-    # If you want to access the Nginx-served app directly during dev (without Caddy):
-    # ports:
-    #   - "3001:80" # Example: map host 3001 to container 80
-    networks:
-      - frankie_net
-    restart: unless-stopped
-    # For Vite HMR development directly within a container (more advanced setup):
-    # volumes:
-    #   - ./frontend/src:/app/src 
-    # command: npm run dev -- --host # If package.json script starts Vite dev server
-
-  proxy:
-    image: caddy:2-alpine
-    container_name: frankie_proxy
-    ports:
-      - "80:80"   # HTTP
-      - "443:443" # HTTPS
-      - "443:443/udp" # For HTTP/3 (QUIC)
     volumes:
-      # Mounts the Caddyfile configuration
-      - ./proxy/Caddyfile:/etc/caddy/Caddyfile:ro
-      # Named volumes for Caddy's state (persists SSL certs, etc.)
-      - caddy_data:/data
-      - caddy_config:/config
+      - ./frontend:/app
+    ports:
+      - "3000:3000"
+    environment:
+      - CHOKIDAR_USEPOLLING=true
     networks:
       - frankie_net
-    restart: unless-stopped
-    depends_on: # Ensure backend and frontend are started before proxy tries to connect
+    depends_on:
       - backend
-      - frontend
+    restart: unless-stopped
 
-# Docker Named Volumes for persistent data
 volumes:
-  frankie_data: # For backend SQLite DB, logs
-    driver: local
-  caddy_data:   # For Caddy's SSL certificates and other operational data
-    driver: local
-  caddy_config: # For Caddy's configuration (though main Caddyfile is bind-mounted)
-    driver: local
+  postgres_data:
+  ollama_data:
 
-# Docker Network for inter-service communication
 networks:
   frankie_net:
     driver: bridge
