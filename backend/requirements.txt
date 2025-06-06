@@ -14,6 +14,6 @@ psycopg2-binary>=2.9.0,<2.10.0 # For PostgreSQL support, optional if only using 
 gitpython>=3.1.0,<3.2.0
 pytest>=7.0.0,<8.2.0
 black>=23.0.0,<24.4.0
-python-gedcom>=3.0.0,<3.1.0 # For parsing GEDCOM files
+python-gedcom>=2.0.0 # For parsing GEDCOM files
 beautifulsoup4>=4.12.0,<4.13.0 # For web scraping by tools
 ratelimit>=2.2.0,<2.3.0 # For rate limiting external API calls
