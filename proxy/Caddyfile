@@ -1,0 +1,88 @@
+# -----------------------------------------------------------------------------
+# Caddyfile for Frankie AI Web Agent
+# -----------------------------------------------------------------------------
+# This file configures the Caddy reverse proxy.
+# Caddy automatically enables HTTPS for any site address that is not localhost or an IP.
+# Documentation: https://caddyserver.com/docs/caddyfile
+# -----------------------------------------------------------------------------
+
+# --- PRODUCTION CONFIGURATION ---
+# 1. Replace "frankie.yourdomain.com" with your actual domain name(s).
+# 2. Ensure your domain's A/AAAA DNS records point to this server's public IP address.
+# 3. Comment out or remove the "Local Development (HTTP)" block below.
+#
+# frankie.yourdomain.com {
+#     # Enable modern compression for better performance
+#     encode zstd gzip
+#
+#     # Recommended security headers
+#     header {
+#         # Enable HSTS, instructing browsers to always use HTTPS
+#         Strict-Transport-Security "max-age=31536000;"
+#         # Prevent clickjacking
+#         X-Frame-Options "SAMEORIGIN"
+#         # Prevent MIME-type sniffing
+#         X-Content-Type-Options "nosniff"
+#         # Control referrer policy
+#         Referrer-Policy "strict-origin-when-cross-origin"
+#         # Basic Content Security Policy (customize as needed)
+#         # Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline';"
+#         # Remove Caddy's server signature
+#         -Server
+#     }
+#
+#     # Configure logging (optional, Caddy logs to stdout/stderr by default)
+#     log {
+#         output file /data/logs/frankie_access.log {
+#             roll_size 10mb
+#             roll_keep 5
+#         }
+#         format json # Or console, common_log
+#     }
+#
+#     # Route API requests to the backend service (Docker internal DNS)
+#     # The backend service is named 'backend' in docker-compose.yml and listens on port 8000.
+#     handle_path /api/* {
+#         reverse_proxy backend:8000
+#     }
+#
+#     # Route all other requests to the frontend service
+#     # The frontend service is named 'frontend' in docker-compose.yml and its Nginx serves on port 80.
+#     handle {
+#         reverse_proxy frontend:80
+#     }
+# }
+
+
+# --- LOCAL DEVELOPMENT (HTTP) ---
+# This block is for running the stack locally without a domain name or HTTPS.
+# It serves the application over HTTP on localhost (port 80).
+# This is the default active configuration.
+#
+# When using Vite's HMR (Hot Module Replacement) for frontend dev, you typically access
+# the Vite dev server directly (e.g., http://localhost:3000).
+# This Caddy block is still useful for routing /api/* requests to the backend
+# if you want to test the full stack through a single entry point (http://localhost).
+#
+:80 { # Listen on port 80 for all hostnames (localhost, 127.0.0.1)
+    encode zstd gzip
+
+    # Log all requests to Caddy's stdout for easy viewing in `docker-compose logs proxy`
+    log {
+        output stdout
+        format console # Human-readable format
+    }
+
+    # Route API requests to the backend service
+    # 'backend:8000' uses Docker's internal DNS to resolve the backend container.
+    handle_path /api/* {
+        reverse_proxy backend:8000
+    }
+
+    # Route all other requests to the frontend service
+    # 'frontend:80' uses Docker's internal DNS to resolve the frontend container
+    # where Nginx is serving the built React app on port 80.
+    handle {
+        reverse_proxy frontend:80
+    }
+}

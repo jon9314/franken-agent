@@ -1,0 +1,42 @@
+/* Import Tailwind CSS base styles, components, and utilities */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Optional: Define global custom styles or overrides here */
+body {
+  /* Example: font-family: 'Inter', sans-serif; (if Inter font is imported) */
+  /* Helps ensure text rendering is smooth */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbar for better aesthetics (optional, WebKit browsers only) */
+::-webkit-scrollbar {
+  width: 8px;  /* Width of the scrollbar */
+  height: 8px; /* Height of the scrollbar for horizontal scroll */
+}
+::-webkit-scrollbar-track {
+  background: #f1f1f1; /* Color of the track */
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1; /* Color of the scroll thumb */
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #a1a1a1; /* Color of the thumb on hover */
+}
+
+/* Useful utility class for visually hidden but accessible to screen readers */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}

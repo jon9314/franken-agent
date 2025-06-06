@@ -1,0 +1,76 @@
+# -----------------------------------------------------------------------------
+# Frankie AI Web Agent - Master Configuration File
+# -----------------------------------------------------------------------------
+# This file controls the core settings for the backend application.
+# The backend loads this configuration on startup.
+# Environment variables (from .env) can override these settings if defined in AppSettings.
+# -----------------------------------------------------------------------------
+
+app:
+  # --- General Application Settings ---
+  APP_NAME: "Frankie AI Web Agent"
+  API_V1_STR: "/api/v1" # Base path for all API versions
+  ACCESS_TOKEN_EXPIRE_MINUTES: 43200 # 30 days (JWT token expiration)
+
+  # --- CORS (Cross-Origin Resource Sharing) Settings ---
+  # A list of URLs that are allowed to make requests to the backend API.
+  # Crucial for security and allowing the frontend to communicate.
+  BACKEND_CORS_ORIGINS:
+    - "http://localhost:3000"  # Default Vite dev server
+    - "http://127.0.0.1:3000" # Also for Vite dev server
+    - "http://localhost"      # If accessing frontend via Caddy on port 80 locally
+    - "https://frankiefrankenagent.duckdns.org" # IMPORTANT: Add your production frontend URL here
+
+  # --- Database Configuration ---
+  # Defines the connection string for the application's database.
+  # Default uses a local SQLite database file stored in the `backend/data` directory
+  # (this directory is mounted as a Docker volume to persist data).
+  DATABASE_URL: "sqlite:///./data/frankie.db"
+  # Example for PostgreSQL (requires 'psycopg2-binary' in requirements.txt):
+  # DATABASE_URL: "postgresql://user:password@db_host:5432/frankie_db"
+
+  # --- Ollama Server Configuration ---
+  # A list of local or remote Ollama servers that Frankie can use for model inference.
+  OLLAMA_SERVERS:
+    - name: "local" # A friendly name for this server configuration
+      # 'host.docker.internal' is a special DNS name Docker provides for containers
+      # to connect to services running on the host machine (e.g., your laptop).
+      url: "http://192.168.1.148:11434"
+      api_key: null # Optional: API key if your Ollama is behind a proxy requiring one
+    # Example of another server:
+    # - name: "remote_gpu_server"
+    #   url: "http://192.168.1.150:11434" # IP or hostname of another Ollama server
+    #   api_key: "your-secret-ollama-api-key"
+
+  # --- Initial User Creation ---
+  # A list of users to be created automatically when the application starts up
+  # for the first time, if they don't already exist by email.
+  # Useful for creating a default admin account.
+  # WARNING: Use strong, unique passwords for production environments!
+  INITIAL_USERS:
+    - email: "jon9314@gmail.com"
+      password: "B!t3dust" # CHANGE THIS
+      full_name: "Frankie Administrator"
+      role: "admin" # The 'admin' role grants access to admin-only endpoints.
+
+    - email: "jon9314@gmail.com"
+      password: "B!t3dust" # CHANGE THIS
+      full_name: "Regular User"
+      role: "user" # The 'user' role has standard access.
+      
+  # --- Notification Configuration ---
+  # Controls when and how Frankie sends notifications about agent tasks.
+  notifications:
+    # Master switch to enable or disable all notifications system-wide.
+    # SMTP credentials must also be set in backend/.env for emails to be sent.
+    enabled: true 
+
+    # The email address where admin notifications will be sent.
+    # For multiple recipients, consider using a distribution list/group email address.
+    recipient_email: "jon9414@gmail.com" # CHANGE THIS
+    
+    # Configure which agent task events trigger a notification.
+    notify_on:
+      awaits_review: true  # When an agent task completes and needs admin review.
+      error: true          # When an agent task encounters an error during processing.
+      applied: true        # When an agent task's changes are successfully applied (e.g., code committed).
