@@ -53,7 +53,7 @@ app:
       full_name: "Frankie Administrator"
       role: "admin" # The 'admin' role grants access to admin-only endpoints.
 
-    - email: "jon9314@gmail.com"
+    - email: "jon9314+user@gmail.com"
       password: "B!t3dust" # CHANGE THIS
       full_name: "Regular User"
       role: "user" # The 'user' role has standard access.

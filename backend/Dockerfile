@@ -81,4 +81,4 @@ EXPOSE 8000
 #   - Watches /frankie_codebase/backend/app for changes made by the agent or local dev.
 #   - Watches /frankie_codebase/config for changes to config.yml (though app only reads on startup).
 # For production, you would typically remove --reload and --reload-dir for stability and performance.
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/app/app", "--reload-dir", "/frankie_codebase/backend/app", "--reload-dir", "/frankie_codebase/config"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/app", "--reload-dir", "/frankie_codebase/backend/app", "--reload-dir", "/frankie_codebase/config"]
