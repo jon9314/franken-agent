@@ -2,7 +2,7 @@
 # For this project, Python dependencies are installed directly.
 
 # Final stage: Official Python runtime
-FROM python:3.11-slim
+FROM python:3.11
 
 # Set environment variables for Python
 ENV PYTHONDONTWRITEBYTECODE 1  # Prevents Python from writing .pyc files to disc (good for containers)
