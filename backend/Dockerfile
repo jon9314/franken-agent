@@ -63,7 +63,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # The application code itself runs from /app as defined by WORKDIR.
 COPY ./alembic.ini /app/alembic.ini
 COPY ./alembic /app/alembic
-COPY ./app /app/app # This is the Python application code
+COPY ./app /app # This is the Python application code
 
 # The directory /frankie_codebase (project root) will be created and populated by the
 # docker-compose volume mount: `- ./:/frankie_codebase`
@@ -80,4 +80,4 @@ EXPOSE 8000
 #   - Watches /frankie_codebase/backend/app for changes made by the agent or local dev.
 #   - Watches /frankie_codebase/config for changes to config.yml (though app only reads on startup).
 # For production, you would typically remove --reload and --reload-dir for stability and performance.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/app/app", "--reload-dir", "/frankie_codebase/backend/app", "--reload-dir", "/frankie_codebase/config"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/app/app", "--reload-dir", "/frankie_codebase/backend/app", "--reload-dir", "/frankie_codebase/config"]
