@@ -1,5 +1,4 @@
-# Note: The top-level "version" attribute is obsolete in modern Docker Compose and has been removed.
-
+# Note: The top-level "version" attribute is obsolete and has been removed.
 services:
   backend:
     build:
@@ -9,7 +8,6 @@ services:
     env_file:
       - ./backend/.env
     volumes:
-      # This is the correct volume setup:
       # Mount the entire project into /frankie_codebase for the agent to access.
       - ./:/frankie_codebase
       # Separately, mount the config file into the app's running directory.
@@ -19,15 +17,13 @@ services:
     networks:
       - frankie_net
     restart: unless-stopped
-    # The CMD command is now correctly defined and read from the backend/Dockerfile.
-    # We do NOT need to specify a 'command' here, as it would override the Dockerfile.
+    # The CMD command is defined in the backend/Dockerfile.
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: frankie_frontend
-    # We do not need to expose a port here, because the 'proxy' service will handle it.
     networks:
       - frankie_net
     restart: unless-stopped
@@ -38,7 +34,7 @@ services:
     ports:
       - "80:80"
       - "443:443"
-      - "443:443/udp" # For HTTP/3
+      - "443:443/udp"
     volumes:
       - ./proxy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -46,7 +42,7 @@ services:
     networks:
       - frankie_net
     restart: unless-stopped
-    depends_on: # Ensures backend/frontend start before the proxy tries to connect
+    depends_on:
       - backend
       - frontend
 
