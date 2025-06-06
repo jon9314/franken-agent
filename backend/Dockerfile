@@ -63,7 +63,8 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # The application code itself runs from /app as defined by WORKDIR.
 COPY ./alembic.ini /app/alembic.ini
 COPY ./alembic /app/alembic
-COPY ./app /app # This is the Python application code
+# This is the Python application code
+COPY ./app /app
 
 # The directory /frankie_codebase (project root) will be created and populated by the
 # docker-compose volume mount: `- ./:/frankie_codebase`
