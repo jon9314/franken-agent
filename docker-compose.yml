@@ -1,4 +1,4 @@
-version: "3.8"
+# Note: The top-level "version" attribute is obsolete in modern Docker Compose and has been removed.
 
 services:
   backend:
@@ -6,68 +6,57 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: frankie_backend
-    volumes:
-      - ./:/app
-      - ./config/config.yml:/app/config/config.yml:ro
-      - ./backend/data:/app/backend/data
-      - ./logs:/app/logs
     env_file:
       - ./backend/.env
-    environment:
-      - PYTHONUNBUFFERED=1
-    ports:
-      - "8000:8000"
-    command: uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/backend/app
-    networks:
-      - frankie_net
-    depends_on:
-      - postgres
-    restart: unless-stopped
-
-  postgres:
-    image: postgres:15
-    container_name: frankie_postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: frankie
-      POSTGRES_PASSWORD: frankiepass
-      POSTGRES_DB: frankiedb
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - frankie_net
-
-  ollama:
-    image: ollama/ollama
-    container_name: frankie_ollama
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
+      # This is the correct volume setup:
+      # Mount the entire project into /frankie_codebase for the agent to access.
+      - ./:/frankie_codebase
+      # Separately, mount the config file into the app's running directory.
+      - ./config/config.yml:/app/config/config.yml:ro
+      # Use a named volume for persistent data (database, logs).
+      - frankie_data:/app/data
     networks:
       - frankie_net
     restart: unless-stopped
+    # The CMD command is now correctly defined and read from the backend/Dockerfile.
+    # We do NOT need to specify a 'command' here, as it would override the Dockerfile.
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: frankie_frontend
-    volumes:
-      - ./frontend:/app
-    ports:
-      - "3000:3000"
-    environment:
-      - CHOKIDAR_USEPOLLING=true
+    # We do not need to expose a port here, because the 'proxy' service will handle it.
     networks:
       - frankie_net
-    depends_on:
-      - backend
     restart: unless-stopped
 
+  proxy:
+    image: caddy:2-alpine
+    container_name: frankie_proxy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp" # For HTTP/3
+    volumes:
+      - ./proxy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - frankie_net
+    restart: unless-stopped
+    depends_on: # Ensures backend/frontend start before the proxy tries to connect
+      - backend
+      - frontend
+
 volumes:
-  postgres_data:
-  ollama_data:
+  frankie_data:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local
 
 networks:
   frankie_net:
