@@ -50,7 +50,18 @@ frankie/
 ├── backend/
 │   ├── alembic.ini
 │   ├── alembic/
+│   │   ├── env.py
+│   │   ├── script.py.mako
+│   │   └── versions/
 │   ├── app/
+│   │   ├── init.py
+│   │   ├── main.py
+│   │   ├── api/
+│   │   ├── core/
+│   │   ├── db/
+│   │   ├── genealogy_tools/
+│   │   ├── plugins/
+│   │   └── services/
 │   ├── .env.example
 │   ├── Dockerfile
 │   ├── requirements.txt

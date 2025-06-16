@@ -1,18 +1,20 @@
-import { expect, afterEach, vi } from 'vitest'; // vi for mocking if needed
+import { expect, afterEach, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
-import '@testing-library/jest-dom'; // Extends `expect` with jest-dom matchers like .toBeInTheDocument()
+import '@testing-library/jest-dom'; // Extends `expect` with jest-dom matchers
 
-// Mock global window.confirm for tests that might use it, to prevent test runner hangs
-// You can make it more sophisticated by checking arguments or returning different values
-global.confirm = vi.fn(() => true); // Default to true (user clicks "OK")
-// To test different scenarios:
+// Mock global window.confirm for tests that might use it, to prevent the test runner from hanging
+// By default, it will simulate the user clicking "OK".
+global.confirm = vi.fn(() => true); 
+
+// To test a specific scenario where the user clicks "Cancel", you can mock it in a test:
 // beforeEach(() => {
 //   vi.mocked(global.confirm).mockClear().mockReturnValue(true); 
 // });
-// In a test: vi.mocked(global.confirm).mockReturnValueOnce(false);
+// In a specific test: vi.mocked(global.confirm).mockReturnValueOnce(false);
 
-// Runs a cleanup function (e.g., unmounting components) after each test case.
-// This is good practice to ensure tests are isolated.
+// This is a standard cleanup routine from react-testing-library.
+// It runs after each test case and unmounts any rendered React components,
+// ensuring that tests are isolated from each other.
 afterEach(() => {
   cleanup();
 });

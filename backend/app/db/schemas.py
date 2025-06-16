@@ -1,8 +1,9 @@
-from pydantic import BaseModel, EmailStr, Field, HttpUrl # Added HttpUrl
+from __future__ import annotations # MUST be at the top of the file
+from pydantic import BaseModel, EmailStr, Field, HttpUrl
 from typing import Optional, List
 from datetime import datetime
-# Import enums from models.py where they are now defined with Python's enum
-from .models import TaskStatus, TestStatus, FindingStatus 
+# Import enums directly from models.py where they are defined
+from . import models
 
 # --- User Schemas ---
 class UserBase(BaseModel):
@@ -16,7 +17,14 @@ class UserInDBBase(UserBase):
     role: str
     class Config: from_attributes = True 
 class UserPublic(UserInDBBase): pass
-class User(UserInDBBase): pass
+
+# --- ADD THIS TO PREVENT CIRCULAR IMPORTS ---
+class User(UserInDBBase):
+    # These fields are defined here but will be populated from the model
+    family_trees: List[FamilyTreeSimple] = []
+    # chat_history: List[ChatHistoryEntry] = [] # Can add if needed
+    class Config: from_attributes = True
+
 
 # --- Token Schemas ---
 class Token(BaseModel):
@@ -49,33 +57,29 @@ class ModelInfo(BaseModel):
 class AgentTaskBase(BaseModel):
     prompt: str
     target_files: Optional[str] = Field(None, description="Comma-separated paths for code_modifier plugin")
-
-class AgentTaskCreate(AgentTaskBase): # This is used for request body on task creation
-    plugin_id: str = Field(..., description="ID of the plugin to use for this task (e.g., 'code_modifier', 'odyssey_agent')")
-    target_tree_id: Optional[int] = Field(None, description="For genealogy_researcher: DB ID of the FamilyTree")
-    target_person_id: Optional[int] = Field(None, description="For genealogy_researcher: DB ID of the Person")
-
-class AgentTask(AgentTaskBase): # This is the main response model for an AgentTask
+class AgentTaskCreate(AgentTaskBase):
+    plugin_id: str
+    target_tree_id: Optional[int] = None
+    target_person_id: Optional[int] = None
+class AgentTask(AgentTaskBase):
     id: int
     owner_id: int
     plugin_id: str
-    status: TaskStatus # Use the enum from models
+    status: models.TaskStatus # Use the direct reference
     llm_explanation: Optional[str] = None
-    proposed_diff: Optional[str] = None # For code_modifier
+    proposed_diff: Optional[str] = None
     error_message: Optional[str] = None
-    commit_hash: Optional[str] = None # For code_modifier
+    commit_hash: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
-    test_status: TestStatus # Use the enum from models
-    test_results: Optional[str] = None # For code_modifier
+    test_status: models.TestStatus # Use the direct reference
+    test_results: Optional[str] = None
     target_tree_id: Optional[int] = None
     target_person_id: Optional[int] = None
-    
-    # --- NEW field for Odyssey Plugin state ---
-    task_context_data: Optional[str] = Field(None, description="JSON string storing complex state for plugins like Odyssey Agent (e.g., plan, current milestone).")
-    
+    task_context_data: Optional[str] = None
     class Config: from_attributes = True
 
+# --- Agent Permission Schemas ---
 class AgentPermissionBase(BaseModel):
     path: str
     comment: Optional[str] = None
@@ -87,21 +91,22 @@ class AgentPermission(AgentPermissionBase):
 
 # --- Genealogy Schemas ---
 class PersonBase(BaseModel):
-    gedcom_id: str = Field(..., example="@I1@")
-    first_name: Optional[str] = Field(None, example="John")
-    last_name: Optional[str] = Field(None, example="Smith")
-    sex: Optional[str] = Field(None, example="M", max_length=10)
-    birth_date: Optional[str] = Field(None, example="1 JAN 1900")
-    birth_place: Optional[str] = Field(None, example="New York, USA") # Changed to str from Text
-    death_date: Optional[str] = Field(None, example="15 MAR 1980")
-    death_place: Optional[str] = Field(None, example="Los Angeles, USA") # Changed to str from Text
+    gedcom_id: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    sex: Optional[str] = None
+    birth_date: Optional[str] = None
+    birth_place: Optional[str] = None
+    death_date: Optional[str] = None
+    death_place: Optional[str] = None
 class Person(PersonBase):
     id: int
     tree_id: int
+    findings: List['ResearchFinding'] = [] # Use forward reference as a string
     class Config: from_attributes = True
 
 class FamilyBase(BaseModel):
-    gedcom_id: str = Field(..., example="@F1@")
+    gedcom_id: str
 class Family(FamilyBase):
     id: int
     tree_id: int
@@ -111,7 +116,7 @@ class Family(FamilyBase):
     class Config: from_attributes = True
 
 class FamilyTreeBase(BaseModel):
-    file_name: str = Field(..., example="smith_family.ged")
+    file_name: str
 class FamilyTreeSimple(FamilyTreeBase):
     id: int
     owner_id: int
@@ -123,28 +128,29 @@ class FamilyTree(FamilyTreeSimple):
     class Config: from_attributes = True
 
 class ResearchFindingBase(BaseModel):
-    data_field: str = Field(..., example="birth_date")
+    data_field: str
     original_value: Optional[str] = None
     suggested_value: Optional[str] = None
-    source_name: str = Field(..., example="FindAGrave.com")
-    source_url: Optional[HttpUrl] = None # Use HttpUrl for validation
+    source_name: str
+    source_url: Optional[HttpUrl] = None
     citation_text: str
     confidence_score: Optional[int] = Field(None, ge=0, le=100)
     llm_reasoning: Optional[str] = None
-class ResearchFindingCreate(ResearchFindingBase): # Used internally by plugins to create findings
+class ResearchFindingCreate(ResearchFindingBase):
     person_id: int
     agent_task_id: int
-class ResearchFinding(ResearchFindingBase): # For API responses
+class ResearchFinding(ResearchFindingBase):
     id: int
     person_id: int
     agent_task_id: int
-    status: FindingStatus # Use the enum from models
+    status: models.FindingStatus # Use the direct reference
     created_at: datetime
     reviewed_at: Optional[datetime] = None
     reviewed_by_id: Optional[int] = None
     class Config: from_attributes = True
 
-class GitStatus(BaseModel): # For Admin endpoint
-    active_branch: str
-    latest_commit: Optional[str] = None
-    uncommitted_changes: bool
+# --- ADD THIS AT THE BOTTOM OF THE FILE ---
+# This resolves the forward references (the type hints that are strings)
+# after all models have been defined.
+User.update_forward_refs()
+Person.update_forward_refs()
