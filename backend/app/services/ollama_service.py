@@ -1,6 +1,6 @@
 import httpx
 import json
-from typing import List, Optional, Dict, Tuple, Any # <-- 'Any' has been added here
+from typing import List, Optional, Dict, Tuple, Any
 from loguru import logger
 
 from app.core.config import settings, OllamaServer
@@ -8,128 +8,106 @@ from app.core.config import settings, OllamaServer
 class OllamaService:
     def __init__(self, servers: List[OllamaServer]):
         self.servers = {server.name: server for server in servers}
-        self.client = httpx.AsyncClient(timeout=180.0)
-
-    def get_default_server(self) -> Optional[OllamaServer]:
-        """Returns the first configured server as the default."""
         if not self.servers:
-            return None
-        return next(iter(self.servers.values()))
-
-    async def list_models_from_server(self, server: OllamaServer) -> List[Dict[str, str]]:
-        """Fetches models from a specific Ollama server."""
-        try:
-            response = await self.client.get(f"{server.url}/api/tags")
-            response.raise_for_status()
-            models_data = response.json().get("models", [])
-            return [{"server_name": server.name, "model_name": model['name'], "url": str(server.url)} for model in models_data]
-        except httpx.RequestError as e:
-            logger.error(f"Could not connect to Ollama server '{server.name}' at {server.url}. Error: {e}")
-        except httpx.HTTPStatusError as e:
-            logger.error(f"Ollama server '{server.name}' returned an error: {e.response.status_code} - {e.response.text}")
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse JSON response from Ollama server '{server.name}': {e}")
-        return []
+            logger.error("OLLAMA_SERVERS is not configured in the settings.")
+            raise ValueError("OLLAMA_SERVERS configuration is missing.")
 
     async def list_models(self) -> List[Dict[str, str]]:
         """Fetches the list of available models from all configured Ollama servers."""
         all_models = []
         for server_name, server_config in self.servers.items():
-            models_from_server = await self.list_models_from_server(server_config)
-            all_models.extend(models_from_server)
+            try:
+                async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+                    url_to_check = str(server_config.url)
+                    if "host.docker.internal" in url_to_check:
+                        host_ip = "192.168.1.64" # Your HP-Server's local IP
+                        url_to_check = url_to_check.replace("host.docker.internal", host_ip)
+
+                    logger.info(f"Checking for models on Ollama server '{server_config.name}' at {url_to_check}")
+                    response = await client.get(f"{url_to_check.rstrip('/')}/api/tags")
+                    response.raise_for_status()
+
+                    data = response.json()
+                    models_data = data.get("models", [])
+
+                    for model in models_data:
+                        all_models.append({
+                            "server_name": server_config.name,
+                            "model_name": model.get("name"),
+                        })
+
+                    logger.info(f"Found {len(models_data)} models on server '{server_config.name}'.")
+
+            except Exception as e:
+                logger.error(f"An unexpected error occurred while fetching models from '{server_config.name}': {e}", exc_info=True)
+
         return all_models
 
-    async def _get_target_model_and_server(self, model_name: Optional[str] = None) -> Tuple[OllamaServer, str]:
-        """Helper to determine the server and model name to use. Raises ValueError if not found."""
-        if not self.servers:
-            logger.error("No Ollama servers configured.")
-            raise ValueError("No Ollama servers are configured in the settings.")
-
-        if model_name and '/' in model_name:
-            server_nickname, specific_model_name = model_name.split('/', 1)
+    async def _get_target_server(self, model_identifier: str) -> Tuple[Optional[OllamaServer], str]:
+        """
+        Finds the correct server and model name based on the combined 'server_name/model:tag' string.
+        """
+        if '/' in model_identifier:
+            server_nickname, specific_model_name = model_identifier.split('/', 1)
             if server_nickname in self.servers:
-                server_to_use = self.servers[server_nickname]
-                logger.info(f"Using specified server '{server_nickname}' and model '{specific_model_name}'.")
-                return server_to_use, specific_model_name
+                logger.info(f"Request for model '{specific_model_name}' on explicitly named server '{server_nickname}'.")
+                return self.servers[server_nickname], specific_model_name
             else:
-                logger.warning(f"Specified server nickname '{server_nickname}' not found in config. Trying to find model '{specific_model_name}' on any server.")
-                model_name = specific_model_name
+                logger.warning(f"Server nickname '{server_nickname}' not found. Searching for model '{specific_model_name}' on all servers.")
+                model_name_to_find = specific_model_name
+        else:
+            model_name_to_find = model_identifier
 
-        if model_name:
-            all_listed_models = await self.list_models()
-            for m_info in all_listed_models:
-                if m_info['model_name'] == model_name:
-                    server_to_use = self.servers[m_info['server_name']]
-                    logger.info(f"Found model '{model_name}' on server '{m_info['server_name']}'.")
-                    return server_to_use, model_name
-            logger.warning(f"Model '{model_name}' not found on any configured server. Falling back to default model on default server.")
+        # Fallback: Find the model on any available server if not explicitly specified or nickname not found.
+        all_models_list = await self.list_models() # This uses the corrected list_models logic
+        for model_info in all_models_list:
+            if model_info['model_name'] == model_name_to_find:
+                server_name = model_info['server_name']
+                logger.info(f"Found model '{model_name_to_find}' on server '{server_name}' via search.")
+                return self.servers[server_name], model_name_to_find
 
-        server_to_use = self.get_default_server()
+        # If the model is not found anywhere, we cannot proceed.
+        logger.error(f"Could not find model '{model_name_to_find}' on any configured server.")
+        return None, model_name_to_find
+
+    async def generate(self, prompt: str, model: Optional[str] = None) -> Dict[str, Any]:
+        """Sends a prompt to the appropriate Ollama server and gets a plain text response."""
+        if not model:
+            return {"error": "No model was selected for generation."}
+
+        server_to_use, target_model = await self._get_target_server(model)
+
         if not server_to_use:
-            raise ValueError("Could not determine a default Ollama server.")
+            error_msg = f"Could not find the specified model '{target_model}' on any configured Ollama server."
+            logger.error(error_msg)
+            return {"error": error_msg}
 
-        models_on_default_server = await self.list_models_from_server(server_to_use)
-        if not models_on_default_server:
-            raise ValueError(f"No models available on default server '{server_to_use.name}'.")
-        
-        target_model = models_on_default_server[0]['model_name']
-        logger.info(f"Using fallback model '{target_model}' on server '{server_to_use.name}'.")
-        return server_to_use, target_model
+        logger.info(f"Sending prompt to model '{target_model}' on server '{server_to_use.name}'.")
 
-    async def _make_ollama_request(self, server_url: Any, payload: Dict) -> Dict:
-        """Internal helper to make the actual HTTP request to Ollama."""
-        try:
-            url_str = str(server_url)
-            response = await self.client.post(f"{url_str}/api/generate", json=payload)
-            response.raise_for_status()
-            return response.json()
-        except httpx.HTTPStatusError as e:
-            logger.error(f"Ollama server at {server_url} returned status {e.response.status_code}: {e.response.text}")
-            error_detail = f"Ollama server error: {e.response.status_code}."
-            try:
-                ollama_error = e.response.json().get("error")
-                if ollama_error:
-                    error_detail += f" Message: {ollama_error}"
-            except json.JSONDecodeError:
-                pass 
-            return {"error": error_detail, "_raw_error_content": e.response.text}
-        except httpx.RequestError as e:
-            logger.error(f"Request to Ollama server at {server_url} failed: {e}")
-            return {"error": f"Failed to communicate with Ollama server: {str(e)}"}
-        except Exception as e:
-            logger.error(f"Unexpected error making request to Ollama server at {server_url}: {e}")
-            return {"error": f"Unexpected error with Ollama server: {str(e)}"}
+        url_str = str(server_to_use.url)
+        if "host.docker.internal" in url_str:
+            host_ip = "192.168.1.64"
+            url_str = url_str.replace("host.docker.internal", host_ip)
 
-    async def generate(self, prompt: str, model_name: Optional[str] = None) -> Dict:
-        """Sends a prompt to an Ollama server and gets a plain text response."""
-        server_to_use, target_model = await self._get_target_model_and_server(model_name)
-        logger.info(f"Sending prompt to model '{target_model}' on server '{server_to_use.name}' ({server_to_use.url}).")
         payload = {"model": target_model, "prompt": prompt, "stream": False}
-        
-        ollama_response = await self._make_ollama_request(server_to_use.url, payload)
-        if "error" in ollama_response:
-            return ollama_response
-            
-        return {
-            "response": ollama_response.get("response", "").strip(),
-            "model_used": target_model
-        }
 
-    async def generate_json(self, prompt: str, model_name: Optional[str] = None) -> Dict:
-        """Sends a prompt to an Ollama server and requests a JSON response."""
-        server_to_use, target_model = await self._get_target_model_and_server(model_name)
-        logger.info(f"Sending JSON prompt to model '{target_model}' on server '{server_to_use.name}' ({server_to_use.url}).")
-        payload = {"model": target_model, "prompt": prompt, "format": "json", "stream": False}
-        
-        ollama_response_raw = await self._make_ollama_request(server_to_use.url, payload)
-        if "error" in ollama_response_raw:
-            return ollama_response_raw
-
-        response_text_json_string = ollama_response_raw.get("response", "{}")
         try:
-            return json.loads(response_text_json_string)
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to decode JSON from Ollama response: {e}. Raw response string: '{response_text_json_string}'")
-            return {"error": "Ollama returned an invalid JSON string that could not be parsed."}
+            async with httpx.AsyncClient(timeout=180.0, follow_redirects=True) as client:
+                response = await client.post(f"{url_str.rstrip('/')}/api/generate", json=payload)
+                response.raise_for_status()
+                ollama_response = response.json()
 
+                return {
+                    "response": ollama_response.get("response", "").strip(),
+                    "model_used": f"{target_model} ({server_to_use.name})"
+                }
+        except httpx.HTTPStatusError as e:
+            error_detail = f"Ollama server returned an error: {e.response.status_code}."
+            logger.error(f"{error_detail} - {e.response.text}")
+            return {"error": error_detail}
+        except Exception as e:
+            logger.error(f"An unexpected error occurred during model generation: {e}", exc_info=True)
+            return {"error": "An unexpected error occurred while communicating with the AI model."}
+
+# Initialize with settings
 ollama_service = OllamaService(servers=settings.OLLAMA_SERVERS)

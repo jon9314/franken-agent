@@ -19,7 +19,8 @@ app:
     - "http://localhost:3000"  # Default Vite dev server
     - "http://127.0.0.1:3000" # Also for Vite dev server
     - "http://localhost"      # If accessing frontend via Caddy on port 80 locally
-    - "https://frankiefrankenagent.duckdns.org" # IMPORTANT: Add your production frontend URL here
+    - "https://frankenagent.duckdns.org" # IMPORTANT: Add your production frontend URL here
+    - "https://cowans.duckdns.org"
 
   # --- Database Configuration ---
   # Defines the connection string for the application's database.
@@ -32,11 +33,12 @@ app:
   # --- Ollama Server Configuration ---
   # A list of local or remote Ollama servers that Frankie can use for model inference.
   OLLAMA_SERVERS:
-    - name: "local" # A friendly name for this server configuration
-      # 'host.docker.internal' is a special DNS name Docker provides for containers
-      # to connect to services running on the host machine (e.g., your laptop).
-      url: "http://192.168.1.148:11434"
-      api_key: null # Optional: API key if your Ollama is behind a proxy requiring one
+  - name: "Local HP Server"
+    url: "http://host.docker.internal:11434"
+    is_default: true
+  - name: "Remote Llama3 Server"
+    url: "http://192.168.1.148:11434"
+    is_default: false
     # Example of another server:
     # - name: "remote_gpu_server"
     #   url: "http://192.168.1.150:11434" # IP or hostname of another Ollama server

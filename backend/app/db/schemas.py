@@ -9,22 +9,25 @@ from . import models
 class UserBase(BaseModel):
     email: EmailStr
     full_name: Optional[str] = None
+
 class UserCreate(UserBase):
     password: str = Field(..., min_length=8)
-    role: str = Field("user", pattern="^(user|admin)$")
+    # The 'role' is now defined in the more specific class below
+
 class UserInDBBase(UserBase):
     id: int
     role: str
     class Config: from_attributes = True 
+
 class UserPublic(UserInDBBase): pass
 
-# --- ADD THIS TO PREVENT CIRCULAR IMPORTS ---
 class User(UserInDBBase):
-    # These fields are defined here but will be populated from the model
     family_trees: List[FamilyTreeSimple] = []
-    # chat_history: List[ChatHistoryEntry] = [] # Can add if needed
     class Config: from_attributes = True
 
+# --- This is the new class we are adding ---
+class UserCreateWithRole(UserCreate):
+    role: str = "user"
 
 # --- Token Schemas ---
 class Token(BaseModel):
@@ -149,8 +152,6 @@ class ResearchFinding(ResearchFindingBase):
     reviewed_by_id: Optional[int] = None
     class Config: from_attributes = True
 
-# --- ADD THIS AT THE BOTTOM OF THE FILE ---
 # This resolves the forward references (the type hints that are strings)
-# after all models have been defined.
 User.update_forward_refs()
 Person.update_forward_refs()

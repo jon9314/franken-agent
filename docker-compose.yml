@@ -1,4 +1,4 @@
-# Note: The top-level "version" attribute is obsolete and has been removed.
+# Note: The top-level "version" attribute has been removed as it is obsolete.
 services:
   backend:
     build:
@@ -7,12 +7,16 @@ services:
     container_name: frankie_backend
     env_file:
       - ./backend/.env
+    extra_hosts: # <-- ADD THIS BLOCK
+      - "host.docker.internal:host-gateway" # <--
     volumes:
-      # Mount the entire project into /frankie_codebase for the agent to access.
+      # This mounts your local backend code directly into the container's app directory.
+      # It ensures any code changes you make are immediately available to the running server.
+      - ./backend:/app
+      
+      # The existing volumes are still needed:
       - ./:/frankie_codebase
-      # Separately, mount the config file into the app's running directory.
       - ./config/config.yml:/app/config/config.yml:ro
-      # Use a named volume for persistent data (database, logs).
       - frankie_data:/app/data
     networks:
       - frankie_net
@@ -57,3 +61,4 @@ volumes:
 networks:
   frankie_net:
     driver: bridge
+

@@ -30,10 +30,6 @@ export const AuthProvider = ({ children }) => {
       console.error("AuthProvider: Failed to fetch user details with token.", error);
       localStorage.removeItem('frankie_token'); // Token is invalid, remove it
       setAuth({ token: null, user: null, isLoading: false });
-      // Optionally navigate to login if not already on a public page
-      // if (location.pathname !== '/login' && location.pathname !== '/register') {
-      //   navigate('/login', { state: { message: "Your session has expired. Please log in again." } });
-      // }
     }
   }, []); // Removed navigate from dependencies as it might cause loops if not careful
 
@@ -109,23 +105,8 @@ export const AuthProvider = ({ children }) => {
     setAuth({ token: null, user: null, isLoading: false });
     localStorage.removeItem('frankie_token');
     // Optionally clear other user-related data from storage
-    // apiClient.defaults.headers.common['Authorization'] = null; // If set globally, remove (interceptor handles per-request)
     navigate('/login'); // Redirect to login page after logout
   }, [navigate]);
-
-  // Global listener for 401 errors (Alternative to API interceptor directly calling logout)
-  // This assumes an event 'auth-error-401' is dispatched by the API client on 401.
-  // useEffect(() => {
-  //   const handleAuthError = () => {
-  //     if (auth.token) { // Only logout if there was a token
-  //       logout();
-  //     }
-  //   };
-  //   window.addEventListener('auth-error-401', handleAuthError);
-  //   return () => {
-  //     window.removeEventListener('auth-error-401', handleAuthError);
-  //   };
-  // }, [auth.token, logout]);
 
   return (
     <AuthContext.Provider value={{ auth, setAuth, login, logout, register }}>

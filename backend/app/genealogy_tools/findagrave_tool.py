@@ -4,7 +4,7 @@ from ratelimit import limits, sleep_and_retry # Ensure these are installed: pip 
 from loguru import logger
 import urllib.parse
 import time # For citation date
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from app.genealogy_tools.base_tool import GenealogyTool
 from app.db.models import Person
@@ -19,12 +19,6 @@ class FindAGraveTool(GenealogyTool):
     @property
     def name(self) -> str:
         return "FindAGrave.com"
-
-    # This tool doesn't require an API key, so is_configured can remain True by default.
-    # If it did, you'd override:
-    # @property
-    # def is_configured(self) -> bool:
-    #     return bool(self.api_key) # Example if an API key was needed
 
     @sleep_and_retry # Apply on the outer method that makes network calls
     @limits(calls=1, period=5) # Limit to 1 call every 5 seconds to be polite to FindAGrave
@@ -52,11 +46,11 @@ class FindAGraveTool(GenealogyTool):
     async def search_person(self, person: Person) -> List[Dict[str, Any]]:
         logger.info(f"[{self.name}] Starting search for Person ID {person.id}: {person.first_name} {person.last_name}")
         findings: List[Dict[str, Any]] = []
-        
+
         # Prepare search parameters based on available person data
         first_name = person.first_name if person.first_name else ""
         last_name = person.last_name if person.last_name else ""
-        
+
         # Attempt to extract year for FindAGrave's year-specific search fields
         birth_year_str = ""
         if person.birth_date:
@@ -65,7 +59,7 @@ class FindAGraveTool(GenealogyTool):
                 if part.isdigit() and len(part) == 4:
                     birth_year_str = part
                     break
-        
+
         death_year_str = ""
         if person.death_date:
             parts = person.death_date.replace(',', ' ').split()
@@ -85,59 +79,39 @@ class FindAGraveTool(GenealogyTool):
         }
         # Remove empty params to make URL cleaner and potentially improve search accuracy
         search_params_cleaned = {k: v for k, v in search_params.items() if v}
-        
+
         base_search_url = "https://www.findagrave.com/memorial/search"
-        
+
         response = await self._make_request(base_search_url, params=search_params_cleaned)
         if not response:
             logger.warning(f"[{self.name}] No response from initial search for {first_name} {last_name}.")
             return findings
 
         soup = BeautifulSoup(response.content, 'html.parser')
-        
-        # The following selectors are EXAMPLES and HIGHLY LIKELY TO BREAK
-        # as FindAGrave.com's HTML structure changes over time.
-        # Robust web scraping requires careful inspection of the target site and regular maintenance.
-        
-        # Example: Try to find a container for search results
+
         results_container = soup.find('div', class_='search-results') # This class is hypothetical
         if not results_container:
              results_container = soup.find('div', attrs={'id': 'memSearch'}) # Another hypothetical selector
 
         if results_container:
-            # Example: Find links that likely point to memorial pages
             memorial_links_tags = results_container.find_all(
                 'a', 
                 href=lambda href: href and "/memorial/" in href and not href.endswith("/search")
             )
-            
+
             logger.info(f"[{self.name}] Found {len(memorial_links_tags)} potential memorial links on search results page.")
 
             for link_tag in memorial_links_tags[:3]: # Process top N results to limit scope/requests
                 memorial_url_path = link_tag.get('href')
                 if not memorial_url_path:
                     continue
-                
+
                 memorial_url = "https://www.findagrave.com" + memorial_url_path
                 logger.info(f"[{self.name}] Potential match found. URL: {memorial_url}")
 
-                # In a full implementation, you would make another request to memorial_url:
-                # memorial_page_response = await self._make_request(memorial_url)
-                # if memorial_page_response:
-                #     memorial_soup = BeautifulSoup(memorial_page_response.content, 'html.parser')
-                #     # Then, scrape detailed information from memorial_soup:
-                #     # name_on_page = memorial_soup.find('h1', id='bio-name').get_text(strip=True)
-                #     # birth_info = memorial_soup.find('time', itemprop='birthDate')
-                #     # death_info = memorial_soup.find('time', itemprop='deathDate')
-                #     # ...and so on for birth place, death place, burial info, spouse, parents, children.
-                #     # Each piece of scraped info would become a dictionary in the `findings` list.
-                #     # e.g., {"data_field": "death_date", "value": "15 Mar 1950", ...}
-
-                # For this example, we create a placeholder finding indicating a potential record.
-                # The LLM synthesizer would later evaluate this against known data.
                 link_text = link_tag.get_text(strip=True, separator=' ')
                 findings.append({
-                   "data_field": "existence_on_findagrave", # A generic field for a found record
+                   "data_field": "existence_on_findagrave",
                    "value": f"Potential FindAGrave record: '{link_text}'",
                    "source_url": memorial_url,
                    "citation": f"Find a Grave, database and images (https://www.findagrave.com : accessed {time.strftime('%d %B %Y')}), memorial page for a potential match of {person.first_name} {person.last_name}. URL: {memorial_url}",
@@ -148,6 +122,6 @@ class FindAGraveTool(GenealogyTool):
 
         if not findings:
             logger.info(f"[{self.name}] No direct memorial links extracted for {first_name} {last_name} from initial search page structure.")
-        
+
         logger.info(f"[{self.name}] Concluding search for Person ID {person.id}. Returning {len(findings)} potential (placeholder) findings.")
         return findings

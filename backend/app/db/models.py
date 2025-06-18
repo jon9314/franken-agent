@@ -75,3 +75,96 @@ class AgentTask(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 # ... (AgentPermission, FamilyTree, Person, Family, ResearchFinding models remain the same) ...
+# --- AgentPermission Model ---
+class AgentPermission(Base):
+    __tablename__ = "agent_permissions"
+    id = Column(Integer, primary_key=True, index=True)
+    path = Column(String, nullable=False, unique=True, index=True)
+    comment = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+# --- Genealogy Models ---
+
+# Association Table for the many-to-many relationship between Family and Children (Person)
+family_child_association = Table(
+    'family_child_association',
+    Base.metadata,
+    Column('family_id', Integer, ForeignKey('genealogy_families.id'), primary_key=True),
+    Column('person_id', Integer, ForeignKey('genealogy_persons.id'), primary_key=True)
+)
+
+class FamilyTree(Base):
+    __tablename__ = "genealogy_family_trees"
+    id = Column(Integer, primary_key=True, index=True)
+    file_name = Column(String, nullable=False)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    owner = relationship("User", back_populates="family_trees")
+    persons = relationship("Person", back_populates="tree", cascade="all, delete-orphan")
+    families = relationship("Family", back_populates="tree", cascade="all, delete-orphan")
+
+class Person(Base):
+    __tablename__ = "genealogy_persons"
+    id = Column(Integer, primary_key=True, index=True)
+    gedcom_id = Column(String, index=True)
+    first_name = Column(String, nullable=True)
+    last_name = Column(String, nullable=True)
+    sex = Column(String(1), nullable=True)
+    birth_date = Column(String, nullable=True)
+    birth_place = Column(String, nullable=True)
+    death_date = Column(String, nullable=True)
+    death_place = Column(String, nullable=True)
+    
+    tree_id = Column(Integer, ForeignKey("genealogy_family_trees.id"), nullable=False)
+    tree = relationship("FamilyTree", back_populates="persons")
+    
+    # Relationship to research findings
+    findings = relationship("ResearchFinding", back_populates="person", cascade="all, delete-orphan")
+
+class Family(Base):
+    __tablename__ = "genealogy_families"
+    id = Column(Integer, primary_key=True, index=True)
+    gedcom_id = Column(String, index=True)
+    
+    tree_id = Column(Integer, ForeignKey("genealogy_family_trees.id"), nullable=False)
+    tree = relationship("FamilyTree", back_populates="families")
+    
+    husband_id = Column(Integer, ForeignKey("genealogy_persons.id"), nullable=True)
+    wife_id = Column(Integer, ForeignKey("genealogy_persons.id"), nullable=True)
+    
+    husband = relationship("Person", foreign_keys=[husband_id])
+    wife = relationship("Person", foreign_keys=[wife_id])
+    
+    children = relationship("Person", secondary=family_child_association)
+
+# Enum for the status of a research finding
+class FindingStatus(str, enum.Enum):
+    UNVERIFIED = "UNVERIFIED"
+    ACCEPTED = "ACCEPTED"
+    REJECTED = "REJECTED"
+
+class ResearchFinding(Base):
+    __tablename__ = "genealogy_research_findings"
+    id = Column(Integer, primary_key=True, index=True)
+    person_id = Column(Integer, ForeignKey("genealogy_persons.id"), nullable=False)
+    agent_task_id = Column(Integer, ForeignKey("agent_tasks.id"), nullable=False)
+    
+    data_field = Column(String, nullable=False)
+    original_value = Column(String, nullable=True)
+    suggested_value = Column(String, nullable=True)
+    confidence_score = Column(Integer, nullable=True)
+    llm_reasoning = Column(Text, nullable=True)
+    source_name = Column(String, nullable=False)
+    source_url = Column(String, nullable=True)
+    citation_text = Column(Text, nullable=True)
+    
+    status = Column(DBEnum(FindingStatus, name="finding_status_enum"), nullable=False, default=FindingStatus.UNVERIFIED)
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    reviewed_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    
+    person = relationship("Person", back_populates="findings")
+    reviewer = relationship("User", foreign_keys=[reviewed_by_id], back_populates="reviewed_findings")

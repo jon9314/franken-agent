@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
+from loguru import logger
 
 from app.core.dependencies import get_db, get_current_active_user
 from app.db import schemas, crud, models
@@ -9,7 +10,7 @@ from app.services.ollama_service import ollama_service # Import the global servi
 router = APIRouter()
 
 @router.post("/", response_model=schemas.ChatResponse, status_code=status.HTTP_200_OK)
-async def handle_chat_interaction( # Renamed for clarity
+async def handle_chat_interaction(
     *,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_active_user),
@@ -29,13 +30,11 @@ async def handle_chat_interaction( # Renamed for clarity
     # Call the Ollama service to get a response
     # The service handles selecting the model and server.
     ollama_result = await ollama_service.generate(
-        prompt=chat_request.prompt, model_name=chat_request.model
+        prompt=chat_request.prompt, model=chat_request.model
     )
 
     if "error" in ollama_result: # Check if the Ollama service returned an error
-        # Log the detailed error for backend diagnosis
-        logger.error(f"Ollama service error for user {current_user.email}: {ollama_result.get('error')} - Raw: {ollama_result.get('_raw_error_content', '')}")
-        # Return a generic error to the client
+        logger.error(f"Ollama service error for user {current_user.email}: {ollama_result.get('error')}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, 
             detail=f"AI service unavailable or encountered an error: {ollama_result['error']}"
@@ -45,8 +44,8 @@ async def handle_chat_interaction( # Renamed for clarity
     crud.create_chat_history_entry(
         db=db,
         user_id=current_user.id,
-        entry=chat_request, # Pass the original request for prompt
-        response_text=ollama_result["response"], # The actual text response from LLM
+        entry=chat_request,
+        response_text=ollama_result["response"],
         model_used=ollama_result["model_used"]
     )
 
@@ -57,7 +56,7 @@ async def handle_chat_interaction( # Renamed for clarity
 
 
 @router.get("/history", response_model=List[schemas.ChatHistoryEntry])
-def get_user_chat_history_list( # Renamed for clarity
+def get_user_chat_history_list(
     *,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_active_user),

@@ -10,7 +10,6 @@ httpx>=0.24.0,<0.28.0
 pyyaml>=6.0,<6.1
 loguru>=0.7.0,<0.8.0
 alembic>=1.10.0,<1.14.0
-psycopg2-binary>=2.9.0,<2.10.0 # For PostgreSQL support, optional if only using SQLite but good for Alembic
 gitpython>=3.1.0,<3.2.0
 pytest>=7.0.0,<8.2.0
 black>=23.0.0,<24.4.0
