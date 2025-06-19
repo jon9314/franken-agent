@@ -2,9 +2,10 @@ import { useState, useEffect, useCallback } from 'react';
 import apiClient from '@/api/index.js';
 import { Link } from 'react-router-dom';
 import { 
-    CpuChipIcon, LightBulbIcon, DocumentTextIcon, ClockIcon, EyeIcon, 
+    LightBulbIcon, DocumentTextIcon, ClockIcon, EyeIcon,
     CodeBracketIcon, ArrowPathIcon, InboxIcon, BeakerIcon 
 } from '@heroicons/react/24/outline';
+import { CpuChipIcon } from '@heroicons/react/24/solid'; // Added for solid version
 import { format } from 'date-fns';
 
 const getStatusPillClasses = (status) => {
