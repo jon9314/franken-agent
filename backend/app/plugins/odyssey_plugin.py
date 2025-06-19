@@ -180,6 +180,91 @@ class OdysseyPlugin(FrankiePlugin):
             "task_context_data": self._get_serialized_task_context_data()
         }
 
+    async def _phase_awaiting_milestone_review(self) -> Dict[str, Any]:
+        """
+        Processes an admin's response to a completed milestone.
+        This method is called when the task is in AWAITING_MILESTONE_REVIEW phase and execute() is triggered.
+        """
+        logger.info(f"Task {self.task.id} [OdysseyPlugin]: Processing admin response in AWAITING_MILESTONE_REVIEW phase.")
+
+        admin_response_raw = self.task.admin_response
+        if admin_response_raw is None:
+            logger.info(f"Task {self.task.id} [OdysseyPlugin]: No admin response found. Returning empty to wait.")
+            return {} # No response yet, orchestrator should not update, plugin waits.
+
+        logger.info(f"Task {self.task.id} [OdysseyPlugin]: Processing admin_response: '{admin_response_raw}'")
+        admin_response = admin_response_raw.lower().strip()
+
+        # Clear the admin response once processed
+        self.task.admin_response = None # TODO: Ensure this is persisted by the orchestrator if the dict is returned.
+                                        # This might need to be part of the returned dict to be saved by orchestrator.
+                                        # For now, assuming direct modification is picked up or handled by orchestrator saving task.
+
+        next_phase = None # Using None to indicate if a phase change decision was made
+        status: models.TaskStatus = models.TaskStatus.AWAITING_REVIEW # Default to no change
+        llm_explanation = ""
+
+        plan = self.task_specific_data.get("plan", {})
+        milestones = plan.get("milestones", [])
+        num_milestones = len(milestones)
+        current_idx = self.task_specific_data.get("current_milestone_index", -1)
+
+        if admin_response in ["approve", "continue"]:
+            logger.info(f"Task {self.task.id} [OdysseyPlugin]: Admin approved milestone {current_idx + 1}.")
+            if current_idx < num_milestones - 1:
+                next_phase = _PHASE_EXECUTING_MILESTONE
+                status = models.TaskStatus.IN_PROGRESS
+                next_milestone_name = milestones[current_idx + 1]['name'] if (current_idx + 1) < num_milestones else "Next"
+                llm_explanation = f"Admin approved. Proceeding to execute next milestone: '{next_milestone_name}'."
+            else:
+                next_phase = _PHASE_FINALIZING
+                status = models.TaskStatus.IN_PROGRESS
+                llm_explanation = "Admin approved. All milestones complete. Proceeding to finalization."
+
+        elif admin_response == "skip":
+            logger.info(f"Task {self.task.id} [OdysseyPlugin]: Admin chose to skip milestone {current_idx + 1}.")
+            skipped_milestone_name = milestones[current_idx]['name'] if 0 <= current_idx < num_milestones else "previous milestone"
+
+            new_idx = current_idx + 1
+            self.task_specific_data['current_milestone_index'] = new_idx # Update index to reflect skip
+
+            if new_idx < num_milestones: # If there's a valid next milestone to execute
+                next_phase = _PHASE_EXECUTING_MILESTONE
+                status = models.TaskStatus.IN_PROGRESS
+                next_milestone_name = milestones[new_idx]['name']
+                llm_explanation = f"Admin skipped milestone '{skipped_milestone_name}'. Proceeding to execute milestone '{next_milestone_name}'."
+            else: # Skipped the last milestone, or skipped into finalization
+                next_phase = _PHASE_FINALIZING
+                status = models.TaskStatus.IN_PROGRESS
+                llm_explanation = f"Admin skipped milestone '{skipped_milestone_name}'. No more milestones to execute directly. Proceeding to finalization."
+
+        elif admin_response in ["stop", "cancel"]:
+            logger.info(f"Task {self.task.id} [OdysseyPlugin]: Admin cancelled the task.")
+            next_phase = _PHASE_COMPLETED
+            status = models.TaskStatus.CANCELLED
+            llm_explanation = "Admin cancelled the task at milestone review."
+
+        elif admin_response in ["replan", "modify"]:
+            logger.info(f"Task {self.task.id} [OdysseyPlugin]: Admin requested replanning.")
+            next_phase = _PHASE_PLANNING
+            status = models.TaskStatus.PLANNING
+            llm_explanation = "Admin requested replanning. Returning to planning phase."
+
+        else:
+            logger.warning(f"Task {self.task.id} [OdysseyPlugin]: Unknown admin response: '{admin_response_raw}'.")
+            # status remains AWAITING_REVIEW
+            llm_explanation = f"Unknown admin response: '{admin_response_raw}'. Please provide a valid input (e.g., approve, skip, stop, replan)."
+            # next_phase remains None, so current_phase in task_specific_data is not updated.
+
+        if next_phase is not None:
+            self.task_specific_data['current_phase'] = next_phase
+
+        return {
+            "status": status,
+            "llm_explanation": llm_explanation,
+            "task_context_data": self._get_serialized_task_context_data()
+        }
+
     async def execute(self) -> Dict[str, Any]:
         """Main entry point. Acts as a state machine for the plugin's lifecycle."""
         current_phase = self.task_specific_data.get("current_phase", _PHASE_PLANNING)
@@ -188,16 +273,31 @@ class OdysseyPlugin(FrankiePlugin):
         if current_phase == _PHASE_PLANNING:
             self.task.status = models.TaskStatus.PLANNING # Update main status for UI feedback
             return await self._phase_planning()
+
+        elif current_phase == _PHASE_AWAITING_PLAN_REVIEW:
+            self.task.status = models.TaskStatus.AWAITING_REVIEW # Ensure status is set
+            logger.info(f"Task {self.task.id} [OdysseyPlugin]: In phase '{current_phase}', awaiting admin action for plan. No active plugin execution.")
+            return {} # Orchestrator handles this state; plugin has no action until approval/rejection
+
+        elif current_phase == _PHASE_AWAITING_MILESTONE_REVIEW:
+            logger.info(f"Task {self.task.id} [OdysseyPlugin]: Execute called during AWAITING_MILESTONE_REVIEW. Checking for admin response.")
+            phase_result = await self._phase_awaiting_milestone_review()
+
+            if phase_result: # If dictionary is not empty, an admin response was processed
+                self.task.status = phase_result.get("status", models.TaskStatus.AWAITING_REVIEW) # Update task status from phase_result
+                # The phase_result already contains llm_explanation and task_context_data
+                return phase_result
+            else:
+                # No admin response processed, task remains in awaiting review.
+                # Ensure task status reflects this if it was changed by a previous run.
+                self.task.status = models.TaskStatus.AWAITING_REVIEW
+                return {} # Return empty, orchestrator doesn't update task.
         
         elif current_phase == _PHASE_EXECUTING_MILESTONE:
             # This phase is entered after an admin approves a plan or a previous milestone.
             self.task.status = models.TaskStatus.IN_PROGRESS # Update main status for UI feedback
             return await self._phase_execute_milestone()
             
-        elif current_phase in [_PHASE_AWAITING_PLAN_REVIEW, _PHASE_AWAITING_MILESTONE_REVIEW]:
-             logger.info(f"Task {self.task.id} [OdysseyPlugin]: In phase '{current_phase}', awaiting admin action. No plugin execution needed.")
-             return {} # Return empty dict; orchestrator will not update the task.
-
         elif current_phase == _PHASE_FINALIZING:
             logger.info(f"Task {self.task.id} [OdysseyPlugin]: Entering FINALIZING phase.")
             # For now, finalization directly transitions to completed.
