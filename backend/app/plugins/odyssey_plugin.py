@@ -109,9 +109,71 @@ class OdysseyPlugin(FrankiePlugin):
         }
 
     async def _phase_execute_milestone(self) -> Dict[str, Any]:
-        """Placeholder for executing an approved milestone. This is the next major implementation step."""
-        logger.warning(f"Task {self.task.id} [OdysseyPlugin]: Attempted to run milestone execution, which is not yet implemented.")
-        return {"status": models.TaskStatus.ERROR, "error_message": "Milestone execution phase not yet implemented."}
+        """
+        Executes the current milestone based on the plan.
+        This phase is triggered after an admin approves a plan or a previous milestone.
+        """
+        logger.info(f"Task {self.task.id} [OdysseyPlugin]: Entering EXECUTING_MILESTONE phase.")
+
+        plan = self.task_specific_data.get("plan")
+        if not plan or not isinstance(plan.get("milestones"), list) or not plan["milestones"]:
+            logger.error(f"Task {self.task.id} [OdysseyPlugin]: Plan or milestones missing or empty in task_specific_data.")
+            return {"status": models.TaskStatus.ERROR, "error_message": "Missing or invalid plan for milestone execution."}
+
+        milestones = plan["milestones"]
+        current_milestone_index = self.task_specific_data.get("current_milestone_index", -1)
+        current_milestone_index += 1
+        self.task_specific_data["current_milestone_index"] = current_milestone_index
+
+        if current_milestone_index >= len(milestones):
+            logger.error(f"Task {self.task.id} [OdysseyPlugin]: current_milestone_index ({current_milestone_index}) is out of bounds for milestones length ({len(milestones)}). Should have gone to FINALIZING.")
+            # This state should ideally not be reached if logic is correct, might go to finalizing.
+            self.task_specific_data["current_phase"] = _PHASE_FINALIZING
+            return {
+                "status": models.TaskStatus.IN_PROGRESS,
+                "llm_explanation": "All milestones executed. Proceeding to finalization.",
+                "task_context_data": self._get_serialized_task_context_data()
+            }
+
+        current_milestone = milestones[current_milestone_index]
+        milestone_name = current_milestone.get("name", f"Milestone {current_milestone_index + 1}")
+        logger.info(f"Task {self.task.id} [OdysseyPlugin]: Executing milestone: {milestone_name}")
+
+        llm_explanation = f"**Milestone Execution: {milestone_name}**\n\n"
+        llm_explanation += f"Description: {current_milestone.get('description', 'N/A')}\n"
+
+        # Simulate tool usage
+        potential_tools = current_milestone.get("potential_tools", [])
+        if potential_tools:
+            selected_tool = potential_tools[0] # Select the first tool
+            logger.info(f"Task {self.task.id} [OdysseyPlugin]: Simulating use of tool '{selected_tool}' for milestone '{milestone_name}'.")
+            llm_explanation += f"Tool Used (Simulated): {selected_tool}\n"
+        else:
+            llm_explanation += "No specific tools listed for this milestone; general processing simulated.\n"
+
+        # Determine next phase
+        next_phase: str
+        next_status: models.TaskStatus
+
+        if current_milestone_index < len(milestones) - 1:
+            next_phase = _PHASE_AWAITING_MILESTONE_REVIEW
+            next_status = models.TaskStatus.AWAITING_REVIEW
+            next_milestone_name = milestones[current_milestone_index + 1].get("name", f"Milestone {current_milestone_index + 2}")
+            llm_explanation += f"\nMilestone '{milestone_name}' execution simulated. The results are now ready for your review. Next up: '{next_milestone_name}'."
+            logger.info(f"Task {self.task.id} [OdysseyPlugin]: Milestone '{milestone_name}' completed. Awaiting review for next milestone.")
+        else:
+            next_phase = _PHASE_FINALIZING
+            next_status = models.TaskStatus.IN_PROGRESS # Finalizing is an active step
+            llm_explanation += f"\nMilestone '{milestone_name}' (final milestone) execution simulated. Proceeding to finalization."
+            logger.info(f"Task {self.task.id} [OdysseyPlugin]: Final milestone '{milestone_name}' completed. Moving to FINALIZING phase.")
+
+        self.task_specific_data["current_phase"] = next_phase
+
+        return {
+            "status": next_status,
+            "llm_explanation": llm_explanation,
+            "task_context_data": self._get_serialized_task_context_data()
+        }
 
     async def execute(self) -> Dict[str, Any]:
         """Main entry point. Acts as a state machine for the plugin's lifecycle."""
@@ -124,11 +186,33 @@ class OdysseyPlugin(FrankiePlugin):
         
         elif current_phase == _PHASE_EXECUTING_MILESTONE:
             # This phase is entered after an admin approves a plan or a previous milestone.
+            self.task.status = models.TaskStatus.IN_PROGRESS # Update main status for UI feedback
             return await self._phase_execute_milestone()
             
         elif current_phase in [_PHASE_AWAITING_PLAN_REVIEW, _PHASE_AWAITING_MILESTONE_REVIEW]:
              logger.info(f"Task {self.task.id} [OdysseyPlugin]: In phase '{current_phase}', awaiting admin action. No plugin execution needed.")
              return {} # Return empty dict; orchestrator will not update the task.
+
+        elif current_phase == _PHASE_FINALIZING:
+            logger.info(f"Task {self.task.id} [OdysseyPlugin]: Entering FINALIZING phase.")
+            # For now, finalization directly transitions to completed.
+            # Future: Could involve report generation, cleanup, etc.
+            self.task_specific_data['current_phase'] = _PHASE_COMPLETED
+            self.task.status = models.TaskStatus.COMPLETED
+            logger.info(f"Task {self.task.id} [OdysseyPlugin]: Task finalized and moved to COMPLETED phase.")
+            return {
+                "status": models.TaskStatus.COMPLETED,
+                "llm_explanation": "Task finalization complete. All milestones processed.",
+                "task_context_data": self._get_serialized_task_context_data()
+            }
+
+        elif current_phase == _PHASE_COMPLETED:
+            logger.info(f"Task {self.task.id} [OdysseyPlugin]: Task is already in COMPLETED phase.")
+            return {
+                "status": models.TaskStatus.COMPLETED, # Ensure orchestrator knows it's still completed
+                "llm_explanation": "This task has already been completed.",
+                "task_context_data": self._get_serialized_task_context_data() # Persist current state if anything changed unexpectedly
+            }
         
         # Default case for unexpected or unhandled phases
         logger.warning(f"Task {self.task.id} [OdysseyPlugin]: Reached execute with unhandled phase '{current_phase}'.")
