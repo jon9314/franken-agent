@@ -1,16 +1,19 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import apiClient from '@/api/index.js';
+import OdysseyTaskOrchestrator from '@/components/odyssey/OdysseyTaskOrchestrator';
 import ReactDiffViewer, { DiffMethod } from 'react-diff-viewer-continued';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { 
     CheckCircleIcon, XCircleIcon, BeakerIcon, InformationCircleIcon, 
-    ArrowUturnLeftIcon, LightBulbIcon, DocumentTextIcon, PaintBrushIcon,
+    ArrowUturnLeftIcon, LightBulbIcon, DocumentTextIcon, PaintBrushIcon, CpuChipIcon, ClockIcon,
     ExclamationTriangleIcon, ArrowPathIcon, HashtagIcon, UserCircleIcon,
     ClipboardDocumentListIcon
 } from '@heroicons/react/24/solid';
 import { format, parseISO } from 'date-fns';
+import { getOdysseyContext, ODYSSEY_PHASES } from '@/components/odyssey/odysseyUtils'; // Import ODYSSEY_PHASES and getOdysseyContext
+import OdysseyPhaseBadge from '@/components/odyssey/OdysseyPhaseBadge'; // Import OdysseyPhaseBadge
 
 const getStatusPillClasses = (status) => {
     const base = "px-2.5 py-1 text-xs font-semibold rounded-full inline-block leading-tight";
@@ -109,6 +112,12 @@ const AgentTaskReview = () => {
         } catch (e) { console.error("Error parsing task context for button text", e); }
     }
 
+    let odysseyPhase = null;
+    if (task && task.plugin_id === 'odyssey_agent') {
+        const odysseyContext = getOdysseyContext(task);
+        odysseyPhase = odysseyContext.current_phase;
+    }
+
     return (
         <div className="space-y-6 pb-10">
             <nav className="flex items-center justify-between pb-4 border-b border-gray-200">
@@ -119,7 +128,12 @@ const AgentTaskReview = () => {
             <header className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
                 <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2">
                     <h2 className="text-xl sm:text-2xl font-bold text-gray-800">Review Agent Task <span className="font-mono text-blue-600">#{task.id}</span></h2>
-                    <span className={getStatusPillClasses(task.status)}>{task.status}</span>
+                    <div className="flex items-center gap-2"> {/* Wrapper for statuses */}
+                        {odysseyPhase && (
+                            <OdysseyPhaseBadge phase={odysseyPhase} />
+                        )}
+                        <span className={getStatusPillClasses(task.status)}>{task.status}</span>
+                    </div>
                 </div>
                 <div className="mt-3 text-xs text-gray-500 space-y-0.5">
                     <p className="flex items-center"><UserCircleIcon className="h-4 w-4 mr-1.5"/>Owner ID: {task.owner_id}</p>
@@ -144,6 +158,11 @@ const AgentTaskReview = () => {
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>{task.llm_explanation}</ReactMarkdown>
                     </div>
                 </div>
+            )}
+
+            {/* Odyssey Plugin Specific UI */}
+            {task.plugin_id === 'odyssey_agent' && (
+                <OdysseyTaskOrchestrator task={task} onTaskUpdate={setTask} />
             )}
             
             {task.plugin_id === "code_modifier" && (
@@ -181,7 +200,12 @@ const AgentTaskReview = () => {
                     )}
                     <div className="flex flex-col sm:flex-row justify-end items-center gap-3 pt-4 border-t border-gray-200">
                         <button onClick={() => alert("Reject/Revise action to be implemented.")} disabled={isSubmitting} className="w-full sm:w-auto py-2 px-5 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-60">Reject / Request Revision</button>
-                        <button onClick={handleApprovalAction} disabled={approvalButtonDisabled} className="w-full sm:w-auto py-2 px-5 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:bg-gray-400 disabled:cursor-not-allowed">{isSubmitting ? 'Processing...' : approveButtonText}</button>
+                        {/* The main approval button is hidden if OdysseyTaskOrchestrator is expected to provide specific review actions */}
+                        {!(task.plugin_id === 'odyssey_agent' && task.task_context_data &&
+                          (JSON.parse(task.task_context_data).current_phase === ODYSSEY_PHASES.AWAITING_PLAN_REVIEW ||
+                           JSON.parse(task.task_context_data).current_phase === ODYSSEY_PHASES.AWAITING_MILESTONE_REVIEW)) &&
+                          <button onClick={handleApproval} disabled={approvalButtonDisabled} className="w-full sm:w-auto py-2 px-5 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:bg-gray-400 disabled:cursor-not-allowed">{isSubmitting ? 'Processing...' : approveButtonText}</button>
+                        }
                     </div>
                 </div>
             )}
