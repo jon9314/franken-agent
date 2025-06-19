@@ -1,4 +1,5 @@
 import json
+import random
 from loguru import logger
 from sqlalchemy.orm import Session
 from typing import Dict, Any
@@ -117,8 +118,12 @@ class OdysseyPlugin(FrankiePlugin):
 
         plan = self.task_specific_data.get("plan")
         if not plan or not isinstance(plan.get("milestones"), list) or not plan["milestones"]:
-            logger.error(f"Task {self.task.id} [OdysseyPlugin]: Plan or milestones missing or empty in task_specific_data.")
-            return {"status": models.TaskStatus.ERROR, "error_message": "Missing or invalid plan for milestone execution."}
+            logger.error(f"Task {self.task.id} [OdysseyPlugin]: Missing or invalid plan for milestone execution. Plan: {plan}")
+            return {
+                "status": models.TaskStatus.ERROR,
+                "error_message": "Missing or invalid plan for milestone execution.",
+                "task_context_data": self._get_serialized_task_context_data()
+            }
 
         milestones = plan["milestones"]
         current_milestone_index = self.task_specific_data.get("current_milestone_index", -1)
@@ -137,19 +142,19 @@ class OdysseyPlugin(FrankiePlugin):
 
         current_milestone = milestones[current_milestone_index]
         milestone_name = current_milestone.get("name", f"Milestone {current_milestone_index + 1}")
-        logger.info(f"Task {self.task.id} [OdysseyPlugin]: Executing milestone: {milestone_name}")
+        logger.info(f"Task {self.task.id} [OdysseyPlugin]: Simulating execution of milestone: {milestone_name}")
 
-        llm_explanation = f"**Milestone Execution: {milestone_name}**\n\n"
+        llm_explanation = f"**Simulated Milestone Execution: {milestone_name}**\n\n"
         llm_explanation += f"Description: {current_milestone.get('description', 'N/A')}\n"
 
         # Simulate tool usage
         potential_tools = current_milestone.get("potential_tools", [])
         if potential_tools:
-            selected_tool = potential_tools[0] # Select the first tool
-            logger.info(f"Task {self.task.id} [OdysseyPlugin]: Simulating use of tool '{selected_tool}' for milestone '{milestone_name}'.")
-            llm_explanation += f"Tool Used (Simulated): {selected_tool}\n"
+            selected_tool = random.choice(potential_tools) # Randomly select a tool
+            logger.info(f"Task {self.task.id} [OdysseyPlugin]: Randomly selected tool '{selected_tool}' for simulated use in milestone '{milestone_name}'.")
+            llm_explanation += f"Simulated Using Tool: {selected_tool}\n"
         else:
-            llm_explanation += "No specific tools listed for this milestone; general processing simulated.\n"
+            llm_explanation += "No specific tools listed for this milestone; general processing simulated without a specific tool.\n"
 
         # Determine next phase
         next_phase: str
@@ -159,13 +164,13 @@ class OdysseyPlugin(FrankiePlugin):
             next_phase = _PHASE_AWAITING_MILESTONE_REVIEW
             next_status = models.TaskStatus.AWAITING_REVIEW
             next_milestone_name = milestones[current_milestone_index + 1].get("name", f"Milestone {current_milestone_index + 2}")
-            llm_explanation += f"\nMilestone '{milestone_name}' execution simulated. The results are now ready for your review. Next up: '{next_milestone_name}'."
-            logger.info(f"Task {self.task.id} [OdysseyPlugin]: Milestone '{milestone_name}' completed. Awaiting review for next milestone.")
+            llm_explanation += f"\nSimulated execution of milestone '{milestone_name}' is complete. The results are now ready for your review. Next up: '{next_milestone_name}'."
+            logger.info(f"Task {self.task.id} [OdysseyPlugin]: Simulated milestone '{milestone_name}' completed. Awaiting review for next milestone.")
         else:
             next_phase = _PHASE_FINALIZING
             next_status = models.TaskStatus.IN_PROGRESS # Finalizing is an active step
-            llm_explanation += f"\nMilestone '{milestone_name}' (final milestone) execution simulated. Proceeding to finalization."
-            logger.info(f"Task {self.task.id} [OdysseyPlugin]: Final milestone '{milestone_name}' completed. Moving to FINALIZING phase.")
+            llm_explanation += f"\nSimulated execution of milestone '{milestone_name}' (final milestone) is complete. Proceeding to finalization."
+            logger.info(f"Task {self.task.id} [OdysseyPlugin]: Final simulated milestone '{milestone_name}' completed. Moving to FINALIZING phase.")
 
         self.task_specific_data["current_phase"] = next_phase
 
