@@ -57,11 +57,65 @@ class OdysseyPlugin(FrankiePlugin):
         """Serializes the internal task data to a JSON string for database storage."""
         return json.dumps(self.task_specific_data)
 
+    def _log_phase_transition(self, phase_name: str):
+        milestone_idx = self.task_specific_data.get('current_milestone_index', -1)
+        plan = self.task_specific_data.get('plan', {})
+        milestones = plan.get('milestones', [])
+        num_milestones = len(milestones)
+
+        log_message = (
+            f"Task {self.task.id} [OdysseyPlugin]: Entering phase '{phase_name}'. "
+            f"Task Status: '{self.task.status.value if self.task.status else 'N/A'}'."
+        )
+
+        if phase_name in [_PHASE_EXECUTING_MILESTONE, _PHASE_AWAITING_MILESTONE_REVIEW]:
+            # For _PHASE_AWAITING_MILESTONE_REVIEW, current_milestone_idx is the one *just completed* or skipped over.
+            # For _PHASE_EXECUTING_MILESTONE, current_milestone_idx is the one *about to be incremented and executed*.
+            # The log message needs to be sensible for both.
+            # If _PHASE_EXECUTING_MILESTONE and idx is -1, it means we are about to execute M1.
+            # If _PHASE_AWAITING_MILESTONE_REVIEW, idx points to the completed/skipped one.
+
+            if phase_name == _PHASE_EXECUTING_MILESTONE:
+                if milestone_idx == -1: # About to execute the first milestone
+                     log_message += " Preparing for first milestone (M1)."
+                elif 0 <= milestone_idx < num_milestones -1 : # About to execute M(idx+2) because idx is current, next is idx+1
+                    next_milestone_to_execute_name = milestones[milestone_idx + 1].get('name', 'Unknown Name')
+                    log_message += (
+                        f" Preparing to execute Milestone {milestone_idx + 2}/{num_milestones} ('{next_milestone_to_execute_name}')."
+                    )
+                elif milestone_idx >= num_milestones -1: # Should not happen if logic is correct, means we are trying to execute beyond last.
+                    log_message += f" Attempting to execute beyond last planned milestone. Index: {milestone_idx +1}/{num_milestones}."
+
+            elif phase_name == _PHASE_AWAITING_MILESTONE_REVIEW: # milestone_idx is the one just completed/skipped
+                if 0 <= milestone_idx < num_milestones:
+                    completed_milestone_name = milestones[milestone_idx].get('name', 'Unknown Name')
+                    log_message += (
+                        f" Reviewing Milestone {milestone_idx + 1}/{num_milestones} ('{completed_milestone_name}')."
+                    )
+                else: # Should not happen if milestone_idx is correctly managed
+                    log_message += f" Reviewing milestone with index {milestone_idx + 1} (Context: {num_milestones} total planned)."
+            else: # General case if logic above is not exhaustive for these phases
+                 log_message += f" Milestone Index: {milestone_idx}, Total Planned: {num_milestones}."
+        elif phase_name == _PHASE_PLANNING and self.task_specific_data.get('current_milestone_index', -1) != -1 :
+             log_message += " Replanning requested."
+
+        logger.info(log_message)
+
+    def _trigger_final_notification(self):
+        # TODO: (OdysseyPlugin Future Enhancement) Implement final notification logic.
+        # This could involve:
+        # - Sending an email to the user or admins.
+        # - Posting a message to a chat platform.
+        # - Logging a detailed summary to a specific audit log or system.
+        # - Triggering other downstream workflows.
+        logger.info(f"Task {self.task.id} [OdysseyPlugin]: Placeholder: _trigger_final_notification called. No actual notification sent.")
+        pass
+
     async def _phase_planning(self) -> Dict[str, Any]:
         """
         The first phase: Takes the user's high-level goal and uses an LLM to generate a plan.
         """
-        logger.info(f"Task {self.task.id} [OdysseyPlugin]: Entering PLANNING phase.")
+        self._log_phase_transition(_PHASE_PLANNING)
         user_goal = self.task.prompt
 
         planning_meta_prompt = f"""
@@ -114,7 +168,9 @@ class OdysseyPlugin(FrankiePlugin):
         Executes the current milestone based on the plan.
         This phase is triggered after an admin approves a plan or a previous milestone.
         """
-        logger.info(f"Task {self.task.id} [OdysseyPlugin]: Entering EXECUTING_MILESTONE phase.")
+        # current_milestone_index here is the one *last completed*.
+        # It will be incremented inside this method before execution.
+        self._log_phase_transition(_PHASE_EXECUTING_MILESTONE)
 
         plan = self.task_specific_data.get("plan")
         if not plan or not isinstance(plan.get("milestones"), list) or not plan["milestones"]:
@@ -148,11 +204,12 @@ class OdysseyPlugin(FrankiePlugin):
         llm_explanation += f"Description: {current_milestone.get('description', 'N/A')}\n"
 
         # Simulate tool usage
+        selected_tool = "None" # Default if no tool is selected
         potential_tools = current_milestone.get("potential_tools", [])
         if potential_tools:
             selected_tool = random.choice(potential_tools) # Randomly select a tool
             logger.info(f"Task {self.task.id} [OdysseyPlugin]: Randomly selected tool '{selected_tool}' for simulated use in milestone '{milestone_name}'.")
-            llm_explanation += f"Simulated Using Tool: {selected_tool}\n"
+            llm_explanation += f"Simulated Using Tool: **{selected_tool}**\n" # Made tool name bold in explanation
         else:
             llm_explanation += "No specific tools listed for this milestone; general processing simulated without a specific tool.\n"
 
@@ -174,6 +231,18 @@ class OdysseyPlugin(FrankiePlugin):
 
         self.task_specific_data["current_phase"] = next_phase
 
+        # Log milestone execution summary
+        milestone_logs = self.task_specific_data.setdefault("milestone_logs", [])
+        milestone_log_entry = {
+            "milestone_id": current_milestone.get("milestone_id", f"M{current_milestone_index + 1}"),
+            "name": milestone_name, # current_milestone_name is milestone_name
+            "status": "simulated_completed",
+            "tool_used": selected_tool,
+            "notes": f"Simulated execution of milestone '{milestone_name}' completed."
+                     f"{' Using tool: ' + selected_tool if selected_tool != 'None' else ' No specific tool was used.'}"
+        }
+        milestone_logs.append(milestone_log_entry)
+
         return {
             "status": next_status,
             "llm_explanation": llm_explanation,
@@ -185,7 +254,8 @@ class OdysseyPlugin(FrankiePlugin):
         Processes an admin's response to a completed milestone.
         This method is called when the task is in AWAITING_MILESTONE_REVIEW phase and execute() is triggered.
         """
-        logger.info(f"Task {self.task.id} [OdysseyPlugin]: Processing admin response in AWAITING_MILESTONE_REVIEW phase.")
+        # current_milestone_index here is the one *just completed* or skipped.
+        self._log_phase_transition(_PHASE_AWAITING_MILESTONE_REVIEW)
 
         admin_response_raw = self.task.admin_response
         if admin_response_raw is None:
@@ -246,6 +316,12 @@ class OdysseyPlugin(FrankiePlugin):
 
         elif admin_response in ["replan", "modify"]:
             logger.info(f"Task {self.task.id} [OdysseyPlugin]: Admin requested replanning.")
+
+            logger.info(f"Task {self.task.id} [OdysseyPlugin]: Resetting milestone progress and plan data for replanning.")
+            self.task_specific_data['current_milestone_index'] = -1
+            self.task_specific_data['milestone_logs'] = []
+            self.task_specific_data['plan'] = None
+
             next_phase = _PHASE_PLANNING
             status = models.TaskStatus.PLANNING
             llm_explanation = "Admin requested replanning. Returning to planning phase."
@@ -266,7 +342,7 @@ class OdysseyPlugin(FrankiePlugin):
         }
 
     async def _phase_finalizing(self) -> Dict[str, Any]:
-        logger.info(f"Task {self.task.id} [OdysseyPlugin]: Entering FINALIZING phase.")
+        self._log_phase_transition(_PHASE_FINALIZING)
 
         # Retrieve the plan for context (optional for now, but good for future detailed reporting)
         plan = self.task_specific_data.get("plan", {})
@@ -281,16 +357,33 @@ class OdysseyPlugin(FrankiePlugin):
         # - Send a final notification or log to a specific output.
         # --- End of Placeholder ---
 
-        llm_explanation = (
-            f"## Task Finalized: {project_title}\n\n"
-            "Task execution is complete. All relevant milestones have been processed according to the plan and admin guidance.\n\n"
-            "**Next Steps:**\n"
-            "- Review any generated artifacts or outputs if applicable (future feature).\n"
-            "- The task is now marked as COMPLETED."
-        )
+        milestone_logs = self.task_specific_data.get("milestone_logs", [])
+
+        if milestone_logs:
+            summary_parts = [f"## Task Finalized: {project_title}\n"]
+            summary_parts.append(f"**Summary of Processed Milestones ({len(milestone_logs)} total):**\n")
+            for log_entry in milestone_logs:
+                summary_parts.append(
+                    f"- **{log_entry.get('name', 'N/A')}** (ID: {log_entry.get('milestone_id', 'N/A')}): "
+                    f"Status: {log_entry.get('status', 'N/A')}. "
+                    f"Tool Used: {log_entry.get('tool_used', 'None')}.\n"
+                )
+            summary_parts.append("\nAll planned milestones have been addressed. The task is now marked as COMPLETED.")
+            llm_explanation = "".join(summary_parts)
+        else:
+            llm_explanation = (
+                f"## Task Finalized: {project_title}\n\n"
+                "Task execution is complete. All milestones have been processed.\n\n"
+                "No detailed milestone logs were found for this task (this might be normal if the task involved no executable milestones or if logging was not active).\n\n"
+                "The task is now marked as COMPLETED."
+            )
 
         logger.info(f"Task {self.task.id} [OdysseyPlugin]: Finalization complete. Setting phase to COMPLETED.")
         self.task_specific_data["current_phase"] = _PHASE_COMPLETED
+
+        # --- Trigger Post-Completion Actions (Placeholder) ---
+        # TODO: Trigger post-completion action (e.g., notification, summary email, log export)
+        self._trigger_final_notification()
 
         return {
             "status": models.TaskStatus.COMPLETED,
@@ -328,7 +421,7 @@ class OdysseyPlugin(FrankiePlugin):
         
         elif current_phase == _PHASE_EXECUTING_MILESTONE:
             # This phase is entered after an admin approves a plan or a previous milestone.
-            self.task.status = models.TaskStatus.IN_PROGRESS # Update main status for UI feedback
+            self.task.status = models.TaskStatus.EXECUTING_MILESTONE # Update main status for UI feedback
             return await self._phase_execute_milestone()
             
         elif current_phase == _PHASE_FINALIZING:
@@ -343,7 +436,11 @@ class OdysseyPlugin(FrankiePlugin):
             return phase_result
 
         elif current_phase == _PHASE_COMPLETED:
-            logger.info(f"Task {self.task.id} [OdysseyPlugin]: Task is already in COMPLETED phase.")
+            self.task.status = models.TaskStatus.COMPLETED # Explicitly set status
+            self._log_phase_transition(_PHASE_COMPLETED)
+            # The original logger.info specific to this block can be kept if it adds value,
+            # or removed if _log_phase_transition is sufficient.
+            # logger.info(f"Task {self.task.id} [OdysseyPlugin]: Task is already in COMPLETED phase.")
             return {
                 "status": models.TaskStatus.COMPLETED, # Ensure orchestrator knows it's still completed
                 "llm_explanation": "This task has already been completed.",
