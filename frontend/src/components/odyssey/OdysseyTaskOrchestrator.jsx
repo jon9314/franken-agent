@@ -5,10 +5,10 @@ import apiClient from '@/api/index.js'; // Assuming apiClient path
 
 // Placeholder for sub-components - will be created in later steps
 import OdysseyPhaseBadge from './OdysseyPhaseBadge';
-// import OdysseyPlanDisplay from './OdysseyPlanDisplay';
-// import OdysseyMilestoneTracker from './OdysseyMilestoneTracker';
-// import OdysseyMilestoneReviewControls from './OdysseyMilestoneReviewControls';
-// import OdysseyFinalReport from './OdysseyFinalReport';
+import OdysseyPlanDisplay from './OdysseyPlanDisplay';
+import OdysseyMilestoneTracker from './OdysseyMilestoneTracker';
+import OdysseyMilestoneReviewControls from './OdysseyMilestoneReviewControls';
+import OdysseyFinalReport from './OdysseyFinalReport';
 
 const OdysseyTaskOrchestrator = ({ task, onTaskUpdate }) => {
     if (!task || task.plugin_id !== 'odyssey_agent') {
@@ -53,19 +53,44 @@ const OdysseyTaskOrchestrator = ({ task, onTaskUpdate }) => {
             {/* For now, let's comment it out to give prominence to the badge. */}
             {/* <p className="text-sm text-purple-600">Current Phase: <span className="font-bold">{current_phase || 'N/A'}</span></p> */}
 
-            {/* Placeholder for actual component rendering */}
-            <div className="mt-3 space-y-3">
-                {current_phase === ODYSSEY_PHASES.AWAITING_PLAN_REVIEW && (
-                    <div className="p-3 bg-yellow-100 border border-yellow-300 rounded">Plan Review UI Placeholder (Plan: {plan ? plan.project_title : 'No Plan'})</div>
+            {/* Container for conditionally rendered phase-specific components */}
+            <div className="mt-4 space-y-4"> {/* Increased top margin and space between children if multiple show */}
+                {current_phase === ODYSSEY_PHASES.AWAITING_PLAN_REVIEW && plan && (
+                    <OdysseyPlanDisplay
+                        plan={plan}
+                        llm_explanation={task.llm_explanation} // Pass the main task's llm_explanation
+                        onDecision={handleAdminDecision}
+                    />
                 )}
+
+                {/* Milestone Tracker: Displayed during execution, review, and completion phases */}
+                {plan && plan.milestones && plan.milestones.length > 0 &&
+                    (current_phase === ODYSSEY_PHASES.EXECUTING_MILESTONE ||
+                     current_phase === ODYSSEY_PHASES.AWAITING_MILESTONE_REVIEW ||
+                     current_phase === ODYSSEY_PHASES.FINALIZING ||
+                     current_phase === ODYSSEY_PHASES.COMPLETED) && (
+                    <OdysseyMilestoneTracker
+                        plan={plan}
+                        currentIndex={current_milestone_index}
+                        milestoneLogs={milestone_logs}
+                    />
+                )}
+
                 {current_phase === ODYSSEY_PHASES.AWAITING_MILESTONE_REVIEW && (
-                    <div className="p-3 bg-blue-100 border border-blue-300 rounded">Milestone Review UI Placeholder</div>
+                    <OdysseyMilestoneReviewControls
+                        llmExplanation={task.llm_explanation} // This should be explanation from the completed milestone
+                        onDecision={handleAdminDecision}
+                    />
                 )}
-                {(current_phase === ODYSSEY_PHASES.EXECUTING_MILESTONE) && (
+                {/* {(current_phase === ODYSSEY_PHASES.EXECUTING_MILESTONE) && ( // Covered by common tracker now
                      <div className="p-3 bg-green-100 border border-green-300 rounded">Milestone Tracker UI Placeholder (Current Idx: {current_milestone_index})</div>
-                )}
+                )} */}
                 {(current_phase === ODYSSEY_PHASES.FINALIZING || current_phase === ODYSSEY_PHASES.COMPLETED) && (
-                    <div className="p-3 bg-gray-100 border border-gray-300 rounded">Final Report UI Placeholder</div>
+                    <OdysseyFinalReport
+                        llmExplanation={task.llm_explanation}
+                        milestoneLogs={milestone_logs}
+                        plan={plan}
+                    />
                 )}
             </div>
 
