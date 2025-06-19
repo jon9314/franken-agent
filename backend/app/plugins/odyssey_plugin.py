@@ -265,6 +265,39 @@ class OdysseyPlugin(FrankiePlugin):
             "task_context_data": self._get_serialized_task_context_data()
         }
 
+    async def _phase_finalizing(self) -> Dict[str, Any]:
+        logger.info(f"Task {self.task.id} [OdysseyPlugin]: Entering FINALIZING phase.")
+
+        # Retrieve the plan for context (optional for now, but good for future detailed reporting)
+        plan = self.task_specific_data.get("plan", {})
+        project_title = plan.get("project_title", "The project") # Get project title if available
+
+        # --- Placeholder for Future Enhancements ---
+        # TODO: (OdysseyPlugin Future Enhancement)
+        # - Aggregate results from each executed/skipped milestone.
+        # - Generate a more detailed final report based on self.task_specific_data['plan']['milestones']
+        #   and their outcomes (if outcomes were tracked).
+        # - Example: Iterate through milestones, check if an 'outcome' or 'status' key was added during execution.
+        # - Send a final notification or log to a specific output.
+        # --- End of Placeholder ---
+
+        llm_explanation = (
+            f"## Task Finalized: {project_title}\n\n"
+            "Task execution is complete. All relevant milestones have been processed according to the plan and admin guidance.\n\n"
+            "**Next Steps:**\n"
+            "- Review any generated artifacts or outputs if applicable (future feature).\n"
+            "- The task is now marked as COMPLETED."
+        )
+
+        logger.info(f"Task {self.task.id} [OdysseyPlugin]: Finalization complete. Setting phase to COMPLETED.")
+        self.task_specific_data["current_phase"] = _PHASE_COMPLETED
+
+        return {
+            "status": models.TaskStatus.COMPLETED,
+            "llm_explanation": llm_explanation,
+            "task_context_data": self._get_serialized_task_context_data()
+        }
+
     async def execute(self) -> Dict[str, Any]:
         """Main entry point. Acts as a state machine for the plugin's lifecycle."""
         current_phase = self.task_specific_data.get("current_phase", _PHASE_PLANNING)
@@ -299,17 +332,15 @@ class OdysseyPlugin(FrankiePlugin):
             return await self._phase_execute_milestone()
             
         elif current_phase == _PHASE_FINALIZING:
-            logger.info(f"Task {self.task.id} [OdysseyPlugin]: Entering FINALIZING phase.")
-            # For now, finalization directly transitions to completed.
-            # Future: Could involve report generation, cleanup, etc.
-            self.task_specific_data['current_phase'] = _PHASE_COMPLETED
-            self.task.status = models.TaskStatus.COMPLETED
-            logger.info(f"Task {self.task.id} [OdysseyPlugin]: Task finalized and moved to COMPLETED phase.")
-            return {
-                "status": models.TaskStatus.COMPLETED,
-                "llm_explanation": "Task finalization complete. All milestones processed.",
-                "task_context_data": self._get_serialized_task_context_data()
-            }
+            logger.info(f"Task {self.task.id} [OdysseyPlugin]: Execute called during FINALIZING phase. Invoking finalization logic.")
+            # The _phase_finalizing method now handles setting the internal phase to _PHASE_COMPLETED
+            # and prepares the final status and explanation.
+            phase_result = await self._phase_finalizing()
+
+            # Update the main task status based on the result from the phase method
+            self.task.status = phase_result.get("status", models.TaskStatus.COMPLETED)
+
+            return phase_result
 
         elif current_phase == _PHASE_COMPLETED:
             logger.info(f"Task {self.task.id} [OdysseyPlugin]: Task is already in COMPLETED phase.")
