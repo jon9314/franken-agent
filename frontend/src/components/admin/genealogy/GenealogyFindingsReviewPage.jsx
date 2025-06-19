@@ -101,7 +101,7 @@ const GenealogyFindingsReviewPage = () => {
         setPageError('');
         try {
             // New dedicated endpoint in backend to get all unverified findings
-            const response = await apiClient.get('/admin/genealogy/findings/unverified');
+            const response = await apiClient.get('/api/genealogy/unverified-findings');
             setFindingsToReview(response.data);
         } catch (err) {
             setPageError('Failed to fetch unverified genealogy findings. Please ensure the backend is running and you have admin rights.');
