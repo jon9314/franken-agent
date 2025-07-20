@@ -1,3 +1,5 @@
+import os
+import secrets
 import yaml
 from pydantic import BaseModel, EmailStr, AnyHttpUrl, Field
 from pydantic_settings import BaseSettings
@@ -24,11 +26,18 @@ class NotificationSettingsModel(BaseModel): # Renamed to avoid Pydantic v1/v2 Ba
     recipient_email: Optional[EmailStr] = Field(None, example="admin-notifications@example.com")
     notify_on: NotificationEvents = NotificationEvents()
 
+def _default_secret() -> str:
+    """Generate a default secret key if one isn't provided via environment."""
+    return os.getenv("SECRET_KEY", secrets.token_urlsafe(32))
+
+
 class AppSettings(BaseSettings):
     APP_NAME: str = "Frankie AI Web Agent"
     API_V1_STR: str = "/api/v1"
-    SECRET_KEY: str # Loaded from .env
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7 # 7 days
+    SECRET_KEY: str = Field(default_factory=_default_secret)
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
+    CODEBASE_PATH: str = "/frankie_codebase/"
+    BASE_APP_URL: AnyHttpUrl = "http://localhost"
 
     # Settings typically from config.yml (can be overridden by env vars if names match)
     BACKEND_CORS_ORIGINS: List[AnyHttpUrl] = ["http://localhost:3000", "http://127.0.0.1:3000"]
@@ -75,10 +84,14 @@ def load_and_merge_config() -> AppSettings:
     # Handle nested Pydantic models specifically if they come from YAML
     if 'notifications' in yaml_config_data and isinstance(yaml_config_data['notifications'], dict):
         yaml_config_data['notifications'] = NotificationSettingsModel(**yaml_config_data['notifications'])
-    if 'ollama_servers' in yaml_config_data: # Ensure list of dicts becomes list of Pydantic models
+    if 'ollama_servers' in yaml_config_data:  # Ensure list of dicts becomes list of Pydantic models
         yaml_config_data['OLLAMA_SERVERS'] = [OllamaServer(**s) for s in yaml_config_data['ollama_servers']]
     if 'initial_users' in yaml_config_data:
         yaml_config_data['INITIAL_USERS'] = [InitialUser(**u) for u in yaml_config_data['initial_users']]
+    if 'codebase_path' in yaml_config_data:
+        yaml_config_data['CODEBASE_PATH'] = yaml_config_data['codebase_path']
+    if 'base_app_url' in yaml_config_data:
+        yaml_config_data['BASE_APP_URL'] = yaml_config_data['base_app_url']
 
     # Create AppSettings instance.
     # Pydantic-settings will:

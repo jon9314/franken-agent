@@ -1,6 +1,7 @@
 import smtplib
 from email.message import EmailMessage
 import enum
+from typing import Optional
 from loguru import logger
 
 from app.core.config import settings # To get notification and SMTP settings
@@ -61,7 +62,10 @@ class NotificationService:
         except Exception as e:
             logger.error(f"Failed to send email notification: {e}", exc_info=True)
 
-    def notify_task_status_change(self, task: AgentTask, base_app_url: str = "http://localhost"): # base_app_url should ideally come from settings for production
+    def notify_task_status_change(self, task: AgentTask, base_app_url: Optional[str] = None):
+        """Send a notification about a task status change."""
+        if base_app_url is None:
+            base_app_url = settings.BASE_APP_URL
         """Checks config and sends a notification for a task status change with HTML content."""
         if not self.is_configured or not self.config.enabled:
             return

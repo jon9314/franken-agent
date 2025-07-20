@@ -11,9 +11,11 @@ from typing import Dict, List, Any # For type hinting
 
 from app.plugins.base_plugin import FrankiePlugin
 from app.services.ollama_service import ollama_service
-from app.db import models, crud, schemas # Ensure crud and schemas are imported
+from app.db import models, crud, schemas  # Ensure crud and schemas are imported
+from app.core.config import settings
 
-CODEBASE_PATH = "/frankie_codebase/" # Mount point defined in docker-compose.yml
+# Root of the repository that the plugin modifies
+CODEBASE_PATH = settings.CODEBASE_PATH
 
 class CodeModifierPlugin(FrankiePlugin):
     """
