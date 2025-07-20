@@ -2,8 +2,9 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session as SQLAlchemySession
-from typing import Generator, Dict, Any # For type hinting
-import os # For file path construction
+from typing import Generator, Dict, Any  # For type hinting
+import os  # For file path construction
+import tempfile
 
 from app.main import app
 from app.core.dependencies import get_db

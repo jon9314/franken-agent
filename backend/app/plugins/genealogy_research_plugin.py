@@ -1,5 +1,6 @@
 from loguru import logger
 from typing import List, Dict, Any # For type hinting
+import time
 
 from app.plugins.base_plugin import FrankiePlugin
 from app.db import models, crud, schemas # Ensure schemas is imported for ResearchFindingCreate
