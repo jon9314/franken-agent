@@ -1,5 +1,6 @@
 import smtplib
 from email.message import EmailMessage
+import enum
 from loguru import logger
 
 from app.core.config import settings # To get notification and SMTP settings

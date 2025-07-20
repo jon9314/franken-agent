@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from typing import List
+from loguru import logger
 
 from app.core.dependencies import get_current_active_user # For authentication
 from app.db import schemas, models # User model for dependency, schemas for response

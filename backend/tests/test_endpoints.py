@@ -4,9 +4,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session as SQLAlchemySession
 from typing import Generator # For type hinting the fixture
 
-from app.main import app # Import the FastAPI application instance
-from app.core.config import settings # Application settings
-from app.db.database import Base, get_db # Original get_db for overriding
+from app.main import app  # Import the FastAPI application instance
+from app.core.config import settings  # Application settings
+from app.db.database import Base
+from app.core.dependencies import get_db
 
 # Setup a separate test database specifically for these endpoint tests
 SQLALCHEMY_DATABASE_URL_ENDPOINTS = "sqlite:///./test_endpoints_db.db" # Unique name
