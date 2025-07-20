@@ -11,6 +11,8 @@ app:
   APP_NAME: "Frankie AI Web Agent"
   API_V1_STR: "/api/v1" # Base path for all API versions
   ACCESS_TOKEN_EXPIRE_MINUTES: 43200 # 30 days (JWT token expiration)
+  BASE_APP_URL: "http://localhost"
+  CODEBASE_PATH: "/frankie_codebase/"
 
   # --- CORS (Cross-Origin Resource Sharing) Settings ---
   # A list of URLs that are allowed to make requests to the backend API.

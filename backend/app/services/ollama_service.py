@@ -1,9 +1,19 @@
 import httpx
 import json
+import socket
 from typing import List, Optional, Dict, Tuple, Any
 from loguru import logger
 
 from app.core.config import settings, OllamaServer
+
+
+def _resolve_docker_host() -> str:
+    """Return the IP address of ``host.docker.internal`` if resolvable."""
+    try:
+        return socket.gethostbyname("host.docker.internal")
+    except Exception as exc:
+        logger.debug(f"Could not resolve host.docker.internal: {exc}")
+        return "host.docker.internal"
 
 class OllamaService:
     def __init__(self, servers: List[OllamaServer]):
@@ -20,8 +30,9 @@ class OllamaService:
                 async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
                     url_to_check = str(server_config.url)
                     if "host.docker.internal" in url_to_check:
-                        host_ip = "192.168.1.64" # Your HP-Server's local IP
-                        url_to_check = url_to_check.replace("host.docker.internal", host_ip)
+                        url_to_check = url_to_check.replace(
+                            "host.docker.internal", _resolve_docker_host()
+                        )
 
                     logger.info(f"Checking for models on Ollama server '{server_config.name}' at {url_to_check}")
                     response = await client.get(f"{url_to_check.rstrip('/')}/api/tags")
@@ -86,8 +97,9 @@ class OllamaService:
 
         url_str = str(server_to_use.url)
         if "host.docker.internal" in url_str:
-            host_ip = "192.168.1.64"
-            url_str = url_str.replace("host.docker.internal", host_ip)
+            url_str = url_str.replace(
+                "host.docker.internal", _resolve_docker_host()
+            )
 
         payload = {"model": target_model, "prompt": prompt, "stream": False}
 

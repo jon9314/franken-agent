@@ -5,9 +5,11 @@ import os
 
 from app.db import models, crud
 from app.services.plugin_manager import get_plugin_manager # Function to get the initialized manager
-from app.services.notification_service import notification_service # Import the global instance
+from app.services.notification_service import notification_service  # Import the global instance
+from app.core.config import settings
 
-CODEBASE_PATH = "/frankie_codebase/" # Should match docker-compose volume mount
+# Path to the repository the agent modifies
+CODEBASE_PATH = settings.CODEBASE_PATH
 
 class AgentOrchestrator:
     def __init__(self, db: Session):
